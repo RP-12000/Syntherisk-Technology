@@ -1,0 +1,76 @@
+# 数据来源和许可登记表（PPT 第三部分“数据资源：从哪来、能不能商用”）。
+# 规矩：每加一个数据源，先在这里登记，再使用。
+# python -m syntherisk.cli load-precedents 和 load-catalog 只接受这里登记过、并且 allowed = true 的来源。
+
+[source.uspto]
+name = "USPTO 专利反应（Lowe，1976–2016，约 177 万条）"
+used_for = "文献先例、条件、产率（M5）"
+license = "CC0"
+commercial_use = "可以；需要清洗"
+allowed = true
+notes = "产率是从专利文本自动提取的，只有约四成反应有产率，以原文为准。"
+
+[source.ord]
+name = "Open Reaction Database"
+used_for = "文献先例（M5）"
+license = "CC BY-SA"
+commercial_use = "可以，要求相同方式共享；和自有数据混合前先做法律确认"
+allowed = true
+
+[source.pubchem_ghs]
+name = "PubChem GHS 分类"
+used_for = "毒性和危害（M6）"
+license = "公开数据"
+commercial_use = "可以，展示时注明来源"
+allowed = true
+
+[source.controlled_ca_us]
+name = "加拿大、美国管制清单"
+used_for = "管制提示（M6）"
+license = "政府公开信息"
+commercial_use = "可以，有机器可读版本"
+allowed = true
+notes = "data/controlled_substances.csv 目前是手工整理的初稿（reviewed = 0），要对照官方清单复核。"
+
+[source.controlled_cn_tw]
+name = "中国大陆、台湾管制清单"
+used_for = "管制提示（M6）"
+license = "政府公开信息"
+commercial_use = "可以；需手工整理、定期复查"
+allowed = true
+notes = "大陆清单是手工整理的初稿；台湾清单还没有整理。"
+
+[source.zinc]
+name = "ZINC 在售目录"
+used_for = "原料能不能买到（M4）"
+license = "见 ZINC 使用条款"
+commercial_use = "内部可用；正式商用前邮件确认"
+allowed = true
+
+[source.seed]
+name = "内置常用试剂表（data/compounds.csv）"
+used_for = "名称识别、危害分类初稿、在售判断的起步数据"
+license = "团队自行整理"
+commercial_use = "可以；危害分类未经复核，以 PubChem GHS 和 SDS 为准"
+allowed = true
+
+[source.demo]
+name = "内置演示路线（data/demo_routes）"
+used_for = "没有接入 AiZynthFinder 时演示流水线"
+license = "团队自行整理的教科书路线"
+commercial_use = "仅用于演示和测试"
+allowed = true
+
+[source.supplier_prices]
+name = "供应商价格和货期"
+used_for = "价格、货期（M4）"
+license = "需要商务合作"
+commercial_use = "试用版前谈；在此之前价格一律显示“待询价”"
+allowed = false
+
+[source.reaxys_scifinder]
+name = "学校的 Reaxys、SciFinder 账号"
+used_for = "（不能用于产品）"
+license = "学术许可"
+commercial_use = "不可以：学术条款禁止商用和机器学习"
+allowed = false

@@ -1,0 +1,74 @@
+{
+  "target": {"smiles": "CC(=O)Oc1ccccc1C(=O)O", "name": "阿司匹林"},
+  "source_note": "演示数据：阿司匹林的教科书路线。不是逆合成引擎搜出来的，条件说明是教科书层面的概述，不是文献检索结果。",
+  "routes": [
+    {
+      "name": "乙酸酐酰化",
+      "tree": {
+        "type": "mol", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "name": "阿司匹林",
+        "children": [{
+          "type": "reaction",
+          "metadata": {
+            "name": "酯化（O-酰化）",
+            "reagents": ["OS(=O)(=O)O"],
+            "conditions": "水杨酸与乙酸酐，少量浓硫酸催化"
+          },
+          "children": [
+            {"type": "mol", "smiles": "OC(=O)c1ccccc1O", "name": "水杨酸"},
+            {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+          ]
+        }]
+      }
+    },
+    {
+      "name": "乙酰氯酰化",
+      "tree": {
+        "type": "mol", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "name": "阿司匹林",
+        "children": [{
+          "type": "reaction",
+          "metadata": {
+            "name": "酯化（O-酰化）",
+            "reagents": ["c1ccncc1"],
+            "conditions": "水杨酸与乙酰氯，吡啶作缚酸剂"
+          },
+          "children": [
+            {"type": "mol", "smiles": "OC(=O)c1ccccc1O", "name": "水杨酸"},
+            {"type": "mol", "smiles": "CC(Cl)=O", "name": "乙酰氯"}
+          ]
+        }]
+      }
+    },
+    {
+      "name": "从苯酚出发（Kolbe–Schmitt）",
+      "tree": {
+        "type": "mol", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "name": "阿司匹林",
+        "children": [{
+          "type": "reaction",
+          "metadata": {
+            "name": "酯化（O-酰化）",
+            "reagents": ["OS(=O)(=O)O"],
+            "conditions": "水杨酸与乙酸酐，少量浓硫酸催化"
+          },
+          "children": [
+            {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"},
+            {
+              "type": "mol", "smiles": "OC(=O)c1ccccc1O", "name": "水杨酸",
+              "children": [{
+                "type": "reaction",
+                "metadata": {
+                  "name": "Kolbe–Schmitt 羧基化",
+                  "reagents": ["[Na+].[OH-]", "OS(=O)(=O)O"],
+                  "conditions": "苯酚钠与二氧化碳在加压、加热下羧基化，再酸化"
+                },
+                "children": [
+                  {"type": "mol", "smiles": "Oc1ccccc1", "name": "苯酚"},
+                  {"type": "mol", "smiles": "O=C=O", "name": "二氧化碳"}
+                ]
+              }]
+            }
+          ]
+        }]
+      }
+    }
+  ]
+}

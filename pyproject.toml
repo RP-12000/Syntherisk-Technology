@@ -1,0 +1,47 @@
+[project]
+name = "syntherisk-backend"
+version = "0.1.0"
+description = "Syntherisk 后端：给 AI 生成的合成路线逐步找依据、打分、排序"
+readme = "README.md"
+# AiZynthFinder 4.4.1 只支持到 Python 3.12，并且要求 NumPy 低于 2、RDKit 是 2023.9 这一版。
+# 它和后端装在同一个环境里，所以后端的这几项跟着它定。
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "rdkit>=2023.9.1,<2024",
+    "numpy>=1.26,<2",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
+    "reportlab>=4.2",
+    "cryptography>=42",
+    "PyJWT>=2.8",
+    # M3 逆合成搜索。pyarrow 钉住版本的原因见 requirements.txt
+    "aizynthfinder==4.4.1",
+    "pyarrow==25.0.0",
+]
+
+[project.optional-dependencies]
+# 生产环境的数据库和任务队列；本地开发默认用 SQLite + 进程内队列，不需要这两项
+postgres = ["psycopg[binary]>=3.1"]
+redis = ["redis>=5.0"]
+# 大模型厂商 SDK：只有选用 Anthropic 时才需要；OpenAI 兼容接口走 httpx，不需要额外的包
+anthropic = ["anthropic>=1.0"]
+dev = ["pytest>=8", "fakeredis>=2.23"]
+
+[tool.setuptools.packages.find]
+include = ["syntherisk*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"

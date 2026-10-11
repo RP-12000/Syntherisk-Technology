@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# 虚拟环境（现在只有一个 .venv）
+.venv*/
+
+# 运行时数据：SQLite 数据库、生成的报告、实验附件、开发用密钥
+var/
+
+# 本机配置和密钥（.env.example 才是要提交的模板）
+.env
+.env.*
+!.env.example
+
+# 大体积的外部数据（USPTO、ZINC、AiZynthFinder 模型），自己下载，不进仓库
+data/external/
+
+# 工具
+.claude/
+.idea/workspace.xml
+.idea/shelf/
+.idea/httpRequests/

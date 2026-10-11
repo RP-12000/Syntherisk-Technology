@@ -1,0 +1,78 @@
+name_zh,name_en,cas,smiles,jurisdiction,list_name,category,severity,reviewed
+1-苯基-2-丙酮,1-phenyl-2-propanone,103-79-7,CC(=O)Cc1ccccc1,CN,易制毒化学品,第一类,strict,0
+"3,4-亚甲基二氧苯基-2-丙酮","3,4-methylenedioxyphenyl-2-propanone",4676-39-5,CC(=O)Cc1ccc2OCOc2c1,CN,易制毒化学品,第一类,strict,0
+胡椒醛,piperonal,120-57-0,O=Cc1ccc2OCOc2c1,CN,易制毒化学品,第一类,strict,0
+黄樟素,safrole,94-59-7,C=CCc1ccc2OCOc2c1,CN,易制毒化学品,第一类,strict,0
+异黄樟素,isosafrole,120-58-1,CC=Cc1ccc2OCOc2c1,CN,易制毒化学品,第一类,strict,0
+N-乙酰邻氨基苯酸,N-acetylanthranilic acid,89-52-1,CC(=O)Nc1ccccc1C(=O)O,CN,易制毒化学品,第一类,strict,0
+邻氨基苯甲酸,anthranilic acid,118-92-3,Nc1ccccc1C(=O)O,CN,易制毒化学品,第一类,strict,0
+麦角酸,lysergic acid,82-58-6,CN1CC(C=C2C1Cc1c[nH]c3cccc2c13)C(=O)O,CN,易制毒化学品,第一类,strict,0
+麻黄素,ephedrine,299-42-3,CNC(C)C(O)c1ccccc1,CN,易制毒化学品,第一类,strict,0
+苯乙酸,phenylacetic acid,103-82-2,OC(=O)Cc1ccccc1,CN,易制毒化学品,第二类,strict,0
+醋酸酐,acetic anhydride,108-24-7,CC(=O)OC(C)=O,CN,易制毒化学品,第二类,strict,0
+三氯甲烷,chloroform,67-66-3,ClC(Cl)Cl,CN,易制毒化学品,第二类,strict,0
+乙醚,diethyl ether,60-29-7,CCOCC,CN,易制毒化学品,第二类,strict,0
+哌啶,piperidine,110-89-4,C1CCNCC1,CN,易制毒化学品,第二类,strict,0
+溴素,bromine,7726-95-6,BrBr,CN,易制毒化学品,第二类,strict,0
+1-苯基-1-丙酮,1-phenyl-1-propanone,93-55-0,CCC(=O)c1ccccc1,CN,易制毒化学品,第二类,strict,0
+甲苯,toluene,108-88-3,Cc1ccccc1,CN,易制毒化学品,第三类,basic,0
+丙酮,acetone,67-64-1,CC(C)=O,CN,易制毒化学品,第三类,basic,0
+甲基乙基酮,2-butanone,78-93-3,CCC(C)=O,CN,易制毒化学品,第三类,basic,0
+高锰酸钾,potassium permanganate,7722-64-7,[K+].[O-][Mn](=O)(=O)=O,CN,易制毒化学品,第三类,basic,0
+硫酸,sulfuric acid,7664-93-9,OS(=O)(=O)O,CN,易制毒化学品,第三类,basic,0
+盐酸,hydrochloric acid,7647-01-0,Cl,CN,易制毒化学品,第三类,basic,0
+苯乙腈,benzyl cyanide,140-29-4,N#CCc1ccccc1,CN,易制毒化学品,第三类,basic,0
+γ-丁内酯,gamma-butyrolactone,96-48-0,O=C1CCCO1,CN,易制毒化学品,第三类,basic,0
+邻氨基苯甲酸,anthranilic acid,118-92-3,Nc1ccccc1C(=O)O,US,DEA Listed Chemicals,List I,strict,0
+N-乙酰邻氨基苯酸,N-acetylanthranilic acid,89-52-1,CC(=O)Nc1ccccc1C(=O)O,US,DEA Listed Chemicals,List I,strict,0
+苯乙腈,benzyl cyanide,140-29-4,N#CCc1ccccc1,US,DEA Listed Chemicals,List I,strict,0
+麻黄素,ephedrine,299-42-3,CNC(C)C(O)c1ccccc1,US,DEA Listed Chemicals,List I,strict,0
+苯乙酸,phenylacetic acid,103-82-2,OC(=O)Cc1ccccc1,US,DEA Listed Chemicals,List I,strict,0
+苯丙醇胺,phenylpropanolamine,14838-15-4,CC(N)C(O)c1ccccc1,US,DEA Listed Chemicals,List I,strict,0
+哌啶,piperidine,110-89-4,C1CCNCC1,US,DEA Listed Chemicals,List I,strict,0
+"3,4-亚甲基二氧苯基-2-丙酮","3,4-methylenedioxyphenyl-2-propanone",4676-39-5,CC(=O)Cc1ccc2OCOc2c1,US,DEA Listed Chemicals,List I,strict,0
+黄樟素,safrole,94-59-7,C=CCc1ccc2OCOc2c1,US,DEA Listed Chemicals,List I,strict,0
+异黄樟素,isosafrole,120-58-1,CC=Cc1ccc2OCOc2c1,US,DEA Listed Chemicals,List I,strict,0
+胡椒醛,piperonal,120-57-0,O=Cc1ccc2OCOc2c1,US,DEA Listed Chemicals,List I,strict,0
+苯甲醛,benzaldehyde,100-52-7,O=Cc1ccccc1,US,DEA Listed Chemicals,List I,strict,0
+硝基乙烷,nitroethane,79-24-3,CC[N+](=O)[O-],US,DEA Listed Chemicals,List I,strict,0
+甲胺,methylamine,74-89-5,CN,US,DEA Listed Chemicals,List I,strict,0
+乙胺,ethylamine,75-04-7,CCN,US,DEA Listed Chemicals,List I,strict,0
+γ-丁内酯,gamma-butyrolactone,96-48-0,O=C1CCCO1,US,DEA Listed Chemicals,List I,strict,0
+碘,iodine,7553-56-2,II,US,DEA Listed Chemicals,List I,strict,0
+氢碘酸,hydriodic acid,10034-85-2,I,US,DEA Listed Chemicals,List I,strict,0
+次磷酸,hypophosphorous acid,6303-21-5,O[PH2]=O,US,DEA Listed Chemicals,List I,strict,0
+醋酸酐,acetic anhydride,108-24-7,CC(=O)OC(C)=O,US,DEA Listed Chemicals,List II,basic,0
+丙酮,acetone,67-64-1,CC(C)=O,US,DEA Listed Chemicals,List II,basic,0
+氯化苄,benzyl chloride,100-44-7,ClCc1ccccc1,US,DEA Listed Chemicals,List II,basic,0
+乙醚,diethyl ether,60-29-7,CCOCC,US,DEA Listed Chemicals,List II,basic,0
+高锰酸钾,potassium permanganate,7722-64-7,[K+].[O-][Mn](=O)(=O)=O,US,DEA Listed Chemicals,List II,basic,0
+甲基乙基酮,2-butanone,78-93-3,CCC(C)=O,US,DEA Listed Chemicals,List II,basic,0
+甲苯,toluene,108-88-3,Cc1ccccc1,US,DEA Listed Chemicals,List II,basic,0
+盐酸,hydrochloric acid,7647-01-0,Cl,US,DEA Listed Chemicals,List II,basic,0
+硫酸,sulfuric acid,7664-93-9,OS(=O)(=O)O,US,DEA Listed Chemicals,List II,basic,0
+甲基异丁基酮,methyl isobutyl ketone,108-10-1,CC(C)CC(C)=O,US,DEA Listed Chemicals,List II,basic,0
+醋酸酐,acetic anhydride,108-24-7,CC(=O)OC(C)=O,CA,Precursor Control Regulations,Class A,strict,0
+N-乙酰邻氨基苯酸,N-acetylanthranilic acid,89-52-1,CC(=O)Nc1ccccc1C(=O)O,CA,Precursor Control Regulations,Class A,strict,0
+邻氨基苯甲酸,anthranilic acid,118-92-3,Nc1ccccc1C(=O)O,CA,Precursor Control Regulations,Class A,strict,0
+麻黄素,ephedrine,299-42-3,CNC(C)C(O)c1ccccc1,CA,Precursor Control Regulations,Class A,strict,0
+异黄樟素,isosafrole,120-58-1,CC=Cc1ccc2OCOc2c1,CA,Precursor Control Regulations,Class A,strict,0
+麦角酸,lysergic acid,82-58-6,CN1CC(C=C2C1Cc1c[nH]c3cccc2c13)C(=O)O,CA,Precursor Control Regulations,Class A,strict,0
+"3,4-亚甲基二氧苯基-2-丙酮","3,4-methylenedioxyphenyl-2-propanone",4676-39-5,CC(=O)Cc1ccc2OCOc2c1,CA,Precursor Control Regulations,Class A,strict,0
+去甲麻黄素,norephedrine,14838-15-4,CC(N)C(O)c1ccccc1,CA,Precursor Control Regulations,Class A,strict,0
+1-苯基-2-丙酮,1-phenyl-2-propanone,103-79-7,CC(=O)Cc1ccccc1,CA,Precursor Control Regulations,Class A,strict,0
+苯乙酸,phenylacetic acid,103-82-2,OC(=O)Cc1ccccc1,CA,Precursor Control Regulations,Class A,strict,0
+哌啶,piperidine,110-89-4,C1CCNCC1,CA,Precursor Control Regulations,Class A,strict,0
+胡椒醛,piperonal,120-57-0,O=Cc1ccc2OCOc2c1,CA,Precursor Control Regulations,Class A,strict,0
+高锰酸钾,potassium permanganate,7722-64-7,[K+].[O-][Mn](=O)(=O)=O,CA,Precursor Control Regulations,Class A,strict,0
+黄樟素,safrole,94-59-7,C=CCc1ccc2OCOc2c1,CA,Precursor Control Regulations,Class A,strict,0
+γ-丁内酯,gamma-butyrolactone,96-48-0,O=C1CCCO1,CA,Precursor Control Regulations,Class A,strict,0
+"1,4-丁二醇","1,4-butanediol",110-63-4,OCCCCO,CA,Precursor Control Regulations,Class A,strict,0
+次磷酸,hypophosphorous acid,6303-21-5,O[PH2]=O,CA,Precursor Control Regulations,Class A,strict,0
+氢碘酸,hydriodic acid,10034-85-2,I,CA,Precursor Control Regulations,Class A,strict,0
+丙酮,acetone,67-64-1,CC(C)=O,CA,Precursor Control Regulations,Class B,basic,0
+乙醚,diethyl ether,60-29-7,CCOCC,CA,Precursor Control Regulations,Class B,basic,0
+盐酸,hydrochloric acid,7647-01-0,Cl,CA,Precursor Control Regulations,Class B,basic,0
+甲基乙基酮,2-butanone,78-93-3,CCC(C)=O,CA,Precursor Control Regulations,Class B,basic,0
+硫酸,sulfuric acid,7664-93-9,OS(=O)(=O)O,CA,Precursor Control Regulations,Class B,basic,0
+甲苯,toluene,108-88-3,Cc1ccccc1,CA,Precursor Control Regulations,Class B,basic,0

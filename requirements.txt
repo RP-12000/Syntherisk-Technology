@@ -1,0 +1,35 @@
+# 后端和 AiZynthFinder 装在同一个环境里（Python 3.12）。照精确版本装，装出来的和开发机上一样：
+#     py -3.12 -m venv .venv
+#     .venv\Scripts\python.exe -m pip install -r requirements.lock.txt
+# 这个文件只列直接依赖和版本范围，升级依赖时才用它；升级完用 pip freeze 重新生成 requirements.lock.txt。
+
+# --- 核心 ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+httpx>=0.27
+python-multipart>=0.0.9
+openpyxl>=3.1
+python-docx>=1.1
+reportlab>=4.2
+cryptography>=42
+PyJWT>=2.8
+
+# --- 逆合成搜索（M3）---
+# AiZynthFinder 要求 Python 低于 3.13、NumPy 低于 2、RDKit 是 2023.9 这一版，后端跟着它用这两个旧版本。
+# pyarrow 必须钉在 25.0.0：不钉的话 pip 会装上只认 NumPy 2 的新版，一导入就报错；17.0.0 又会让程序在加载模型时崩溃。
+aizynthfinder==4.4.1
+pyarrow==25.0.0
+numpy>=1.26,<2
+rdkit>=2023.9.1,<2024
+
+# --- 可选：生产数据库、任务队列、大模型 SDK ---
+psycopg[binary]>=3.1
+redis>=5.0
+anthropic>=1.0
+
+# --- 开发与测试 ---
+pytest>=8
+fakeredis>=2.23

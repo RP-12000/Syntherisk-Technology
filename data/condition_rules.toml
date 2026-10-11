@@ -1,0 +1,144 @@
+# M7 条件与复杂度规则（初稿）。
+# 这些规则应该由化学顾问制定和审核；这里先放一批最常见的，方便流水线跑通。
+#
+# 每条规则只要命中下面任意一项就生效：
+#   substances       data/compounds.csv 里的 key：这一步用到了这个物质
+#   smarts           这一步的某个物质匹配这个子结构
+#   class_keywords   反应名称或类别里出现这些词（不分大小写）
+#   text_keywords    先例的条件文字里出现这些词
+#   max_temperature  先例记录的温度不高于这个值（摄氏度）
+#   min_temperature  先例记录的温度不低于这个值
+#
+# constraint 对应界面上“做不了的条件”（A10）的勾选项，命中后该路线会被排除并写明原因：
+#   pressurized_gas / anhydrous_anaerobic / glovebox / cryogenic / photo_electro
+# purification 对应纯化偏好：高级参数（A13）里选的只影响排序，不排除；
+# 一句话要求（A14）里说成硬性要求的（比如“不能用柱色谱”），命中后同样会排除路线。
+
+[[rule]]
+id = "pressurized_gas"
+label = "加压气体反应"
+short = "需加压气体"
+category = "设备"
+constraint = "pressurized_gas"
+penalty = 30
+reason = "用到氢气或一氧化碳，需要加压设备和气体安全措施"
+substances = ["hydrogen", "carbon_monoxide"]
+class_keywords = ["hydrogenation", "氢化", "加氢", "carbonylation", "羰基化", "kolbe"]
+text_keywords = ["autoclave", "高压釜", " bar", " atm", " psi"]
+
+[[rule]]
+id = "anhydrous_organometallic"
+label = "无水无氧操作"
+short = "需无水"
+category = "气氛"
+constraint = "anhydrous_anaerobic"
+penalty = 22
+reason = "有机金属试剂和金属氢化物遇水、遇氧分解，需要干燥溶剂和惰性气体保护"
+substances = ["magnesium", "lithium_aluminium_hydride", "sodium_hydride", "sodium", "dibal"]
+smarts = ["[Mg][#6]", "[Li][#6]", "[Li][#7]", "[Zn][#6]", "[Al;H1,H2,H3,H4]"]
+class_keywords = ["grignard", "格氏", "lithiation", "锂化", "organolithium"]
+text_keywords = ["anhydrous", "无水", "under argon", "under nitrogen", "氩气保护", "氮气保护"]
+
+[[rule]]
+id = "glovebox"
+label = "手套箱"
+short = "需手套箱"
+category = "设备"
+constraint = "glovebox"
+penalty = 35
+reason = "试剂对空气极其敏感，通常在手套箱里称量和投料"
+smarts = ["[Ni].C1CC=CCCC=C1", "[Sm]"]
+text_keywords = ["glovebox", "glove box", "手套箱"]
+
+[[rule]]
+id = "cryogenic"
+label = "低温（< −40 °C）"
+short = "需低温"
+category = "温度"
+constraint = "cryogenic"
+penalty = 18
+reason = "有机锂等试剂通常在 −78 °C 下使用，需要干冰丙酮浴或低温反应器"
+substances = ["n_butyllithium", "t_butyllithium", "lda", "dibal"]
+smarts = ["[Li][#6]", "[Li][#7]"]
+class_keywords = ["lithiation", "锂化", "swern"]
+text_keywords = ["-78", "−78", "干冰丙酮"]
+max_temperature = -40
+
+[[rule]]
+id = "photo_electro"
+label = "光化学 / 电化学"
+short = "需光或电化学装置"
+category = "设备"
+constraint = "photo_electro"
+penalty = 25
+reason = "需要光反应器或电解装置"
+class_keywords = ["photo", "光催化", "光化学", "electro", "电化学"]
+text_keywords = ["irradiat", "blue led", "光照", "electrolysis", "电解"]
+
+[[rule]]
+id = "hf_handling"
+label = "氟化氢"
+short = "HF 专用防护"
+category = "安全设施"
+penalty = 30
+reason = "氟化氢需要专用耐腐蚀设备、葡萄糖酸钙应急药品和专门培训"
+substances = ["hydrogen_fluoride"]
+
+[[rule]]
+id = "inert_atmosphere"
+label = "惰性气体保护"
+short = "需惰性气体保护"
+category = "气氛"
+penalty = 8
+reason = "零价钯等催化剂对空气敏感，需要脱气并在氮气或氩气下反应"
+substances = ["pd_pph3_4"]
+smarts = ["[Pd;+0]"]
+
+[[rule]]
+id = "pyrophoric_catalyst"
+label = "易自燃催化剂"
+short = "催化剂易自燃"
+category = "安全设施"
+penalty = 10
+reason = "雷尼镍等催化剂干燥后在空气中自燃，过滤和处理时要保持湿润"
+substances = ["raney_nickel"]
+
+[[rule]]
+id = "high_temperature"
+label = "高温（> 150 °C）"
+short = "需高温"
+category = "温度"
+penalty = 10
+reason = "反应温度高于 150 °C，需要油浴以上的加热条件或封管"
+min_temperature = 150
+text_keywords = ["sealed tube", "封管", "microwave", "微波"]
+
+[[rule]]
+id = "column_chromatography"
+label = "柱色谱纯化"
+short = "需过柱"
+category = "纯化"
+purification = "column_chromatography"
+penalty = 5
+reason = "先例里用柱色谱纯化"
+text_keywords = ["chromatograph", "柱色谱", "柱层析", "silica gel", "硅胶柱"]
+
+[[rule]]
+id = "distillation"
+label = "蒸馏纯化"
+short = "需蒸馏"
+category = "纯化"
+purification = "distillation"
+penalty = 4
+reason = "先例里用蒸馏纯化"
+text_keywords = ["distill", "蒸馏"]
+
+[[rule]]
+id = "prep_hplc"
+label = "制备 HPLC 纯化"
+short = "需制备 HPLC"
+category = "纯化"
+purification = "prep_hplc"
+penalty = 10
+reason = "先例里用制备 HPLC 纯化"
+text_keywords = ["preparative hplc", "prep-hplc", "prep hplc", "制备hplc", "制备 hplc"]

@@ -1,0 +1,115 @@
+key,name_zh,name_en,synonyms,cas,smiles,roles,purchasable,h_codes,solvent_class,reviewed
+water,水,water,H2O|纯水|去离子水,7732-18-5,O,solvent|ubiquitous,1,,recommended,0
+methanol,甲醇,methanol,MeOH,67-56-1,CO,solvent,1,H225;H301;H311;H331;H370,recommended,0
+ethanol,乙醇,ethanol,EtOH|无水乙醇|酒精,64-17-5,CCO,solvent,1,H225;H319,recommended,0
+isopropanol,异丙醇,isopropanol,IPA|i-PrOH|2-丙醇|2-propanol,67-63-0,CC(C)O,solvent,1,H225;H319;H336,recommended,0
+acetone,丙酮,acetone,,67-64-1,CC(C)=O,solvent,1,H225;H319;H336,recommended,0
+ethyl_acetate,乙酸乙酯,ethyl acetate,EtOAc|EA|醋酸乙酯,141-78-6,CCOC(C)=O,solvent,1,H225;H319;H336,recommended,0
+butanone,丁酮,2-butanone,MEK|甲基乙基酮|methyl ethyl ketone|甲乙酮,78-93-3,CCC(C)=O,solvent,1,H225;H319;H336,recommended,0
+acetonitrile,乙腈,acetonitrile,MeCN|ACN,75-05-8,CC#N,solvent,1,H225;H302;H312;H319;H332,problematic,0
+dichloromethane,二氯甲烷,dichloromethane,DCM|CH2Cl2|methylene chloride,75-09-2,ClCCl,solvent,1,H315;H319;H336;H351,hazardous,0
+chloroform,三氯甲烷,chloroform,氯仿|CHCl3,67-66-3,ClC(Cl)Cl,solvent,1,H302;H315;H319;H331;H351;H361d;H372,highly_hazardous,0
+tetrahydrofuran,四氢呋喃,tetrahydrofuran,THF,109-99-9,C1CCOC1,solvent,1,H225;H302;H319;H335;H351,problematic,0
+2_methyltetrahydrofuran,2-甲基四氢呋喃,2-methyltetrahydrofuran,2-MeTHF|2-Me-THF|MeTHF,96-47-9,CC1CCCO1,solvent,1,H225;H302;H315;H318,problematic,0
+diethyl_ether,乙醚,diethyl ether,二乙醚|Et2O|ether|ethyl ether|无水乙醚,60-29-7,CCOCC,solvent,1,H224;H302;H336,highly_hazardous,0
+mtbe,甲基叔丁基醚,methyl tert-butyl ether,MTBE|TBME,1634-04-4,COC(C)(C)C,solvent,1,H225;H315,hazardous,0
+dimethoxyethane,乙二醇二甲醚,"1,2-dimethoxyethane",DME|glyme,110-71-4,COCCOC,solvent,1,H225;H315;H332;H360FD,hazardous,0
+dioxane,"1,4-二氧六环","1,4-dioxane",二氧六环|dioxane,123-91-1,C1COCCO1,solvent,1,H225;H319;H335;H350,hazardous,0
+toluene,甲苯,toluene,PhMe,108-88-3,Cc1ccccc1,solvent,1,H225;H304;H315;H336;H361d;H373,problematic,0
+benzene,苯,benzene,,71-43-2,c1ccccc1,solvent,1,H225;H304;H315;H319;H340;H350;H372,highly_hazardous,0
+chlorobenzene,氯苯,chlorobenzene,PhCl,108-90-7,Clc1ccccc1,solvent,1,H226;H312;H315;H319;H332;H411,problematic,0
+hexane,正己烷,n-hexane,hexane|己烷,110-54-3,CCCCCC,solvent,1,H225;H304;H315;H336;H361f;H372;H411,hazardous,0
+heptane,正庚烷,n-heptane,heptane|庚烷,142-82-5,CCCCCCC,solvent,1,H225;H304;H315;H336;H400;H410,problematic,0
+cyclohexane,环己烷,cyclohexane,,110-82-7,C1CCCCC1,solvent,1,H225;H304;H315;H336;H400;H410,problematic,0
+dmf,"N,N-二甲基甲酰胺","N,N-dimethylformamide",DMF|二甲基甲酰胺,68-12-2,CN(C)C=O,solvent,1,H226;H312;H319;H332;H360D,hazardous,0
+dmac,"N,N-二甲基乙酰胺","N,N-dimethylacetamide",DMAc|DMA,127-19-5,CC(=O)N(C)C,solvent,1,H312;H319;H332;H360D,hazardous,0
+nmp,N-甲基吡咯烷酮,N-methyl-2-pyrrolidone,NMP,872-50-4,CN1CCCC1=O,solvent,1,H315;H319;H335;H360D,hazardous,0
+dmso,二甲基亚砜,dimethyl sulfoxide,DMSO,67-68-5,CS(C)=O,solvent,1,,problematic,0
+dichloroethane,"1,2-二氯乙烷","1,2-dichloroethane",DCE|二氯乙烷,107-06-2,ClCCCl,solvent,1,H225;H302;H304;H315;H319;H331;H335;H350,highly_hazardous,0
+carbon_tetrachloride,四氯化碳,carbon tetrachloride,CCl4,56-23-5,ClC(Cl)(Cl)Cl,solvent,1,H301;H311;H317;H331;H351;H372;H412;H420,highly_hazardous,0
+pyridine,吡啶,pyridine,Py,110-86-1,c1ccncc1,solvent|base,1,H225;H302;H312;H332,hazardous,0
+acetic_acid,乙酸,acetic acid,冰醋酸|醋酸|AcOH|HOAc,64-19-7,CC(=O)O,solvent|acid,1,H226;H314,problematic,0
+acetic_anhydride,乙酸酐,acetic anhydride,醋酸酐|醋酐|Ac2O,108-24-7,CC(=O)OC(C)=O,reagent,1,H226;H302;H314;H332,,0
+acetyl_chloride,乙酰氯,acetyl chloride,AcCl,75-36-5,CC(Cl)=O,reagent,1,H225;H290;H314,,0
+isobutylbenzene,异丁基苯,isobutylbenzene,异丁苯|IBB,538-93-2,CC(C)Cc1ccccc1,building_block,1,H226;H304;H315;H319;H335;H400;H410,,0
+aluminium_chloride,三氯化铝,aluminium chloride,无水三氯化铝|氯化铝|AlCl3|aluminum chloride,7446-70-0,Cl[Al](Cl)Cl,reagent,1,H314,,0
+hydrogen_fluoride,氟化氢,hydrogen fluoride,氢氟酸|HF|hydrofluoric acid,7664-39-3,F,reagent,1,H300;H310;H314;H330,,0
+sodium_borohydride,硼氢化钠,sodium borohydride,NaBH4,16940-66-2,[Na+].[BH4-],reagent,1,H260;H301;H314;H360F,,0
+hydrochloric_acid,盐酸,hydrochloric acid,浓盐酸|HCl|氯化氢|hydrogen chloride,7647-01-0,Cl,acid,1,H290;H314;H335,,0
+magnesium,镁屑,magnesium turnings,镁|镁条|镁粉|Mg|Mg turnings|magnesium,7439-95-4,[Mg],reagent,1,H228;H261,,0
+carbon_dioxide,二氧化碳（干冰）,carbon dioxide,干冰|CO2|dry ice|固体二氧化碳,124-38-9,O=C=O,reagent|gas,1,,,0
+hydrogen,氢气,hydrogen,H2,1333-74-0,[H][H],gas,1,H220;H280,,0
+carbon_monoxide,一氧化碳,carbon monoxide,CO,630-08-0,[C-]#[O+],gas,1,H220;H280;H331;H360D;H372,,0
+raney_nickel,雷尼镍,Raney nickel,兰尼镍|镍|Raney Ni|nickel,7440-02-0,[Ni],catalyst,1,H250;H317;H351;H372;H412,,0
+palladium_on_carbon,钯碳,palladium on carbon,Pd/C|钯|palladium,7440-05-3,[Pd],catalyst,1,H228,,0
+pdcl2_pph3_2,双(三苯基膦)二氯化钯,bis(triphenylphosphine)palladium(II) dichloride,PdCl2(PPh3)2,13965-03-2,[Pd+2].[Cl-].[Cl-].c1ccc(cc1)P(c1ccccc1)c1ccccc1.c1ccc(cc1)P(c1ccccc1)c1ccccc1,catalyst,1,H317;H413,,0
+pd_pph3_4,四(三苯基膦)钯,tetrakis(triphenylphosphine)palladium(0),Pd(PPh3)4,14221-01-3,[Pd].c1ccc(cc1)P(c1ccccc1)c1ccccc1.c1ccc(cc1)P(c1ccccc1)c1ccccc1.c1ccc(cc1)P(c1ccccc1)c1ccccc1.c1ccc(cc1)P(c1ccccc1)c1ccccc1,catalyst,1,H302;H317;H413,,0
+palladium_acetate,醋酸钯,palladium(II) acetate,Pd(OAc)2,3375-31-3,CC(=O)[O-].CC(=O)[O-].[Pd+2],catalyst,1,H317;H318;H400;H410,,0
+triphenylphosphine,三苯基膦,triphenylphosphine,PPh3,603-35-0,c1ccc(cc1)P(c1ccccc1)c1ccccc1,reagent,1,H302;H317;H373;H413,,0
+copper_iodide,碘化亚铜,copper(I) iodide,CuI,7681-65-4,[Cu]I,catalyst,1,H302;H315;H319;H335;H410,,0
+ethyl_chloroacetate,氯乙酸乙酯,ethyl chloroacetate,,105-39-5,CCOC(=O)CCl,reagent,1,H226;H301;H310;H315;H317;H318;H331;H400,,0
+sodium_ethoxide,乙醇钠,sodium ethoxide,NaOEt,141-52-6,CC[O-].[Na+],base,1,H228;H251;H314,,0
+hydroxylamine_hcl,盐酸羟胺,hydroxylamine hydrochloride,羟胺盐酸盐|NH2OH·HCl,5470-11-1,NO.Cl,reagent,1,H290;H302;H312;H315;H317;H319;H351;H373;H400,,0
+sodium_hydroxide,氢氧化钠,sodium hydroxide,NaOH|烧碱,1310-73-2,[Na+].[OH-],base,1,H290;H314,,0
+potassium_hydroxide,氢氧化钾,potassium hydroxide,KOH,1310-58-3,[K+].[OH-],base,1,H302;H314,,0
+sulfuric_acid,硫酸,sulfuric acid,浓硫酸|H2SO4,7664-93-9,OS(=O)(=O)O,acid,1,H314,,0
+phosphoric_acid,磷酸,phosphoric acid,H3PO4,7664-38-2,OP(O)(O)=O,acid,1,H314,,0
+trifluoroacetic_acid,三氟乙酸,trifluoroacetic acid,TFA,76-05-1,OC(=O)C(F)(F)F,acid,1,H314;H332;H412,,0
+p_toluenesulfonic_acid,对甲苯磺酸,p-toluenesulfonic acid,TsOH|PTSA,104-15-4,Cc1ccc(cc1)S(O)(=O)=O,acid,1,H314;H335,,0
+salicylic_acid,水杨酸,salicylic acid,邻羟基苯甲酸,69-72-7,OC(=O)c1ccccc1O,building_block,1,H302;H312;H318;H361d,,0
+phenol,苯酚,phenol,石炭酸,108-95-2,Oc1ccccc1,building_block,1,H301;H311;H314;H331;H341;H373,,0
+4_hydroxyacetophenone,4-羟基苯乙酮,4-hydroxyacetophenone,对羟基苯乙酮,99-93-4,CC(=O)c1ccc(O)cc1,building_block,1,H302;H319;H412,,0
+4_aminophenol,对氨基苯酚,4-aminophenol,4-氨基苯酚,123-30-8,Nc1ccc(O)cc1,building_block,1,H302;H317;H332;H341;H373;H400;H410,,0
+aniline,苯胺,aniline,,62-53-3,Nc1ccccc1,building_block,1,H301;H311;H317;H318;H331;H341;H351;H372;H400,,0
+benzaldehyde,苯甲醛,benzaldehyde,,100-52-7,O=Cc1ccccc1,building_block,1,H302,,0
+benzoic_acid,苯甲酸,benzoic acid,,65-85-0,OC(=O)c1ccccc1,building_block,1,H315;H318;H372,,0
+thionyl_chloride,氯化亚砜,thionyl chloride,二氯亚砜|SOCl2,7719-09-7,ClS(Cl)=O,reagent,1,H302;H314;H331;H335,,0
+oxalyl_chloride,草酰氯,oxalyl chloride,(COCl)2,79-37-8,ClC(=O)C(Cl)=O,reagent,1,H260;H314;H331;H335,,0
+phosphorus_oxychloride,三氯氧磷,phosphorus oxychloride,POCl3|磷酰氯,10025-87-3,O=P(Cl)(Cl)Cl,reagent,1,H290;H302;H314;H330;H372,,0
+triethylamine,三乙胺,triethylamine,TEA|Et3N,121-44-8,CCN(CC)CC,base,1,H225;H301;H311;H314;H331;H335,,0
+dipea,"N,N-二异丙基乙胺","N,N-diisopropylethylamine",DIPEA|DIEA|Hünig 碱,7087-68-5,CCN(C(C)C)C(C)C,base,1,H225;H302;H318;H331;H335,,0
+dmap,4-二甲氨基吡啶,4-dimethylaminopyridine,DMAP,1122-58-3,CN(C)c1ccncc1,catalyst,1,H301;H310;H314;H331;H335;H411,,0
+potassium_carbonate,碳酸钾,potassium carbonate,K2CO3,584-08-7,[K+].[K+].[O-]C([O-])=O,base,1,H315;H319;H335,,0
+sodium_carbonate,碳酸钠,sodium carbonate,Na2CO3|纯碱,497-19-8,[Na+].[Na+].[O-]C([O-])=O,base,1,H319,,0
+sodium_bicarbonate,碳酸氢钠,sodium bicarbonate,NaHCO3|小苏打,144-55-8,[Na+].OC([O-])=O,base,1,,,0
+cesium_carbonate,碳酸铯,cesium carbonate,Cs2CO3,534-17-8,[Cs+].[Cs+].[O-]C([O-])=O,base,1,H315;H318;H335;H361f;H373,,0
+sodium_sulfate,无水硫酸钠,sodium sulfate,Na2SO4|硫酸钠,7757-82-6,[Na+].[Na+].[O-]S([O-])(=O)=O,reagent,1,,,0
+magnesium_sulfate,无水硫酸镁,magnesium sulfate,MgSO4|硫酸镁,7487-88-9,[Mg+2].[O-]S([O-])(=O)=O,reagent,1,H302;H312;H332,,0
+sodium_chloride,氯化钠,sodium chloride,NaCl|食盐,7647-14-5,[Na+].[Cl-],reagent,1,,,0
+ammonium_chloride,氯化铵,ammonium chloride,NH4Cl,12125-02-9,[NH4+].[Cl-],reagent,1,H302;H319,,0
+ammonia_water,氨水,ammonium hydroxide,NH3·H2O|ammonia solution,1336-21-6,[NH4+].[OH-],base,1,H314;H335;H400,,0
+lithium_aluminium_hydride,氢化铝锂,lithium aluminium hydride,LiAlH4|LAH|四氢铝锂,16853-85-3,[Li+].[AlH4-],reagent,1,H260;H314,,0
+dibal,二异丁基氢化铝,diisobutylaluminium hydride,DIBAL|DIBAL-H,1191-15-7,CC(C)C[AlH]CC(C)C,reagent,1,H250;H260;H314,,0
+sodium_hydride,氢化钠,sodium hydride,NaH,7646-69-7,[Na+].[H-],base,1,H260,,0
+sodium,金属钠,sodium,钠|Na,7440-23-5,[Na],reagent,1,H260;H314,,0
+n_butyllithium,正丁基锂,n-butyllithium,丁基锂|n-BuLi|BuLi,109-72-8,[Li]CCCC,reagent,1,H250;H260;H314,,0
+t_butyllithium,叔丁基锂,tert-butyllithium,t-BuLi,594-19-4,[Li]C(C)(C)C,reagent,1,H250;H260;H314,,0
+lda,二异丙基氨基锂,lithium diisopropylamide,LDA,4111-54-0,[Li]N(C(C)C)C(C)C,base,1,H250;H314,,0
+methylmagnesium_bromide,甲基溴化镁,methylmagnesium bromide,MeMgBr,75-16-1,C[Mg]Br,reagent,1,H225;H260;H314,,0
+phenylmagnesium_bromide,苯基溴化镁,phenylmagnesium bromide,PhMgBr,100-58-3,Br[Mg]c1ccccc1,reagent,1,H225;H260;H314,,0
+sodium_cyanide,氰化钠,sodium cyanide,NaCN,143-33-9,[Na+].[C-]#N,reagent,1,H290;H300;H310;H318;H330;H372;H400;H410,,0
+potassium_cyanide,氰化钾,potassium cyanide,KCN,151-50-8,[K+].[C-]#N,reagent,1,H300;H310;H330;H372;H400;H410,,0
+sodium_azide,叠氮化钠,sodium azide,NaN3,26628-22-8,[Na+].[N-]=[N+]=[N-],reagent,1,H300;H310;H400;H410,,0
+osmium_tetroxide,四氧化锇,osmium tetroxide,OsO4,20816-12-0,O=[Os](=O)(=O)=O,reagent,1,H300;H310;H314;H330;H334,,0
+chromium_trioxide,三氧化铬,chromium trioxide,铬酐|CrO3,1333-82-0,O=[Cr](=O)=O,reagent,1,H271;H301;H310;H314;H317;H330;H334;H340;H350;H361f;H372;H400;H410,,0
+tributyltin_hydride,三丁基氢化锡,tributyltin hydride,Bu3SnH,688-73-3,CCCC[SnH](CCCC)CCCC,reagent,1,H301;H312;H315;H319;H360FD;H372;H400;H410,,0
+bromine,溴,bromine,溴素|液溴|Br2,7726-95-6,BrBr,reagent,1,H314;H330;H400,,0
+iodine,碘,iodine,I2,7553-56-2,II,reagent,1,H302;H312;H315;H319;H332;H335;H372;H400,,0
+iodomethane,碘甲烷,iodomethane,甲基碘|MeI|methyl iodide,74-88-4,CI,reagent,1,H226;H301;H312;H315;H319;H331;H335;H351;H400;H411,,0
+dimethyl_sulfate,硫酸二甲酯,dimethyl sulfate,DMS|Me2SO4,77-78-1,COS(=O)(=O)OC,reagent,1,H301;H310;H314;H317;H330;H335;H341;H350,,0
+benzyl_bromide,溴化苄,benzyl bromide,苄溴|BnBr,100-39-0,BrCc1ccccc1,reagent,1,H315;H319;H335,,0
+boc_anhydride,二碳酸二叔丁酯,di-tert-butyl dicarbonate,Boc酸酐|Boc2O|(Boc)2O,24424-99-5,CC(C)(C)OC(=O)OC(=O)OC(C)(C)C,reagent,1,H226;H315;H317;H319;H330;H335,,0
+edc_hcl,EDC 盐酸盐,EDC hydrochloride,EDCI|EDC·HCl|EDC,25952-53-8,CCN=C=NCCCN(C)C.Cl,reagent,1,H302;H311;H315;H317;H319;H335;H373;H400;H410,,0
+dcc,二环己基碳二亚胺,"N,N'-dicyclohexylcarbodiimide",DCC,538-75-0,C(=NC1CCCCC1)=NC1CCCCC1,reagent,1,H302;H311;H317;H318,,0
+nbs,N-溴代丁二酰亚胺,N-bromosuccinimide,NBS,128-08-5,BrN1C(=O)CCC1=O,reagent,1,H272;H290;H302;H314;H400,,0
+mcpba,间氯过氧苯甲酸,3-chloroperoxybenzoic acid,mCPBA|m-CPBA,937-14-4,OOC(=O)c1cccc(Cl)c1,reagent,1,H242;H315;H319;H335,,0
+hydrogen_peroxide,过氧化氢,hydrogen peroxide,双氧水|H2O2,7722-84-1,OO,reagent,1,H271;H302;H314;H332,,0
+sodium_nitrite,亚硝酸钠,sodium nitrite,NaNO2,7632-00-0,[Na+].[O-]N=O,reagent,1,H272;H301;H400,,0
+potassium_permanganate,高锰酸钾,potassium permanganate,KMnO4,7722-64-7,[K+].[O-][Mn](=O)(=O)=O,reagent,1,H272;H302;H314;H361d;H373;H400;H410,,0
+hydrazine_hydrate,水合肼,hydrazine hydrate,肼|N2H4·H2O,7803-57-8,NN.O,reagent,1,H226;H301;H311;H314;H317;H330;H350;H400;H410,,0
+formaldehyde,甲醛,formaldehyde,福尔马林|HCHO,50-00-0,C=O,reagent,1,H301;H311;H314;H317;H331;H341;H350,,0
+zinc,锌粉,zinc powder,锌|Zn,7440-66-6,[Zn],reagent,1,H400;H410,,0
+ibuprofen,布洛芬,ibuprofen,异丁苯丙酸,15687-27-1,CC(C)Cc1ccc(cc1)C(C)C(=O)O,product,1,H302;H319;H335,,0
+aspirin,阿司匹林,aspirin,乙酰水杨酸|acetylsalicylic acid,50-78-2,CC(=O)Oc1ccccc1C(=O)O,product,1,H302,,0
+paracetamol,对乙酰氨基酚,paracetamol,扑热息痛|acetaminophen,103-90-2,CC(=O)Nc1ccc(O)cc1,product,1,H302;H412,,0
+4_isobutylacetophenone,4-异丁基苯乙酮,4'-isobutylacetophenone,对异丁基苯乙酮,38861-78-8,CC(C)Cc1ccc(cc1)C(C)=O,building_block,1,H315;H317;H411,,0

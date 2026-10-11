@@ -1,0 +1,174 @@
+{
+  "target": {"smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬"},
+  "source_note": "演示数据：布洛芬的三条教科书路线（实验室常见的格氏羧基化、Boots 工艺、BHC 工艺）。不是逆合成引擎搜出来的，条件说明是教科书层面的概述，不是文献检索结果。",
+  "routes": [
+    {
+      "name": "格氏羧基化",
+      "tree": {
+        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬",
+        "children": [{
+          "type": "reaction",
+          "metadata": {
+            "name": "格氏羧基化",
+            "reagents": ["[Mg]", "CCOCC"],
+            "conditions": "镁屑、无水乙醚制格氏试剂；通入干冰 CO₂；稀盐酸酸化"
+          },
+          "children": [
+            {"type": "mol", "smiles": "O=C=O", "name": "二氧化碳（干冰）"},
+            {
+              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)Cl", "name": "氯代物",
+              "children": [{
+                "type": "reaction",
+                "metadata": {"name": "氯代", "reagents": [], "conditions": "浓盐酸氯代"},
+                "children": [
+                  {"type": "mol", "smiles": "Cl", "name": "盐酸"},
+                  {
+                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)O", "name": "醇中间体",
+                    "children": [{
+                      "type": "reaction",
+                      "metadata": {
+                        "name": "羰基还原",
+                        "reagents": ["[Na+].[BH4-]", "CO"],
+                        "conditions": "硼氢化钠，甲醇中还原"
+                      },
+                      "children": [{
+                        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮",
+                        "children": [{
+                          "type": "reaction",
+                          "metadata": {
+                            "name": "傅-克酰基化",
+                            "reagents": ["Cl[Al](Cl)Cl"],
+                            "conditions": "乙酸酐、三氯化铝催化，傅-克酰基化"
+                          },
+                          "children": [
+                            {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯"},
+                            {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+                          ]
+                        }]
+                      }]
+                    }]
+                  }
+                ]
+              }]
+            }
+          ]
+        }]
+      }
+    },
+    {
+      "name": "Boots",
+      "tree": {
+        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬",
+        "children": [{
+          "type": "reaction",
+          "metadata": {"name": "腈水解", "reagents": ["OS(=O)(=O)O"], "conditions": "酸性条件下水解"},
+          "children": [
+            {"type": "mol", "smiles": "O", "name": "水"},
+            {
+              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C#N", "name": "腈中间体",
+              "children": [{
+                "type": "reaction",
+                "metadata": {"name": "肟脱水成腈", "reagents": ["CC(=O)OC(C)=O"], "conditions": "乙酸酐脱水"},
+                "children": [{
+                  "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C=NO", "name": "肟中间体",
+                  "children": [{
+                    "type": "reaction",
+                    "metadata": {"name": "成肟", "reagents": [], "conditions": "盐酸羟胺成肟"},
+                    "children": [
+                      {"type": "mol", "smiles": "NO.Cl", "name": "盐酸羟胺"},
+                      {
+                        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C=O", "name": "醛中间体",
+                        "children": [{
+                          "type": "reaction",
+                          "metadata": {
+                            "name": "水解脱羧",
+                            "reagents": ["[Na+].[OH-]", "Cl"],
+                            "conditions": "碱性水解后酸化脱羧"
+                          },
+                          "children": [
+                            {"type": "mol", "smiles": "O", "name": "水"},
+                            {
+                              "type": "mol", "smiles": "CCOC(=O)C1OC1(C)c1ccc(CC(C)C)cc1", "name": "环氧酯中间体",
+                              "children": [{
+                                "type": "reaction",
+                                "metadata": {
+                                  "name": "Darzens 缩合",
+                                  "reagents": ["CC[O-].[Na+]"],
+                                  "conditions": "氯乙酸乙酯、乙醇钠，Darzens 缩合"
+                                },
+                                "children": [
+                                  {"type": "mol", "smiles": "CCOC(=O)CCl", "name": "氯乙酸乙酯"},
+                                  {
+                                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮",
+                                    "children": [{
+                                      "type": "reaction",
+                                      "metadata": {
+                                        "name": "傅-克酰基化",
+                                        "reagents": ["Cl[Al](Cl)Cl"],
+                                        "conditions": "乙酸酐、三氯化铝催化，傅-克酰基化"
+                                      },
+                                      "children": [
+                                        {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯"},
+                                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+                                      ]
+                                    }]
+                                  }
+                                ]
+                              }]
+                            }
+                          ]
+                        }]
+                      }
+                    ]
+                  }]
+                }]
+              }]
+            }
+          ]
+        }]
+      }
+    },
+    {
+      "name": "BHC",
+      "tree": {
+        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬",
+        "children": [{
+          "type": "reaction",
+          "metadata": {
+            "name": "钯催化羰基化",
+            "reagents": ["[Pd+2].[Cl-].[Cl-].c1ccc(cc1)P(c1ccccc1)c1ccccc1.c1ccc(cc1)P(c1ccccc1)c1ccccc1", "Cl"],
+            "conditions": "钯催化羰基化，加压一氧化碳"
+          },
+          "children": [
+            {"type": "mol", "smiles": "[C-]#[O+]", "name": "一氧化碳"},
+            {
+              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)O", "name": "醇中间体",
+              "children": [{
+                "type": "reaction",
+                "metadata": {"name": "催化加氢", "reagents": ["[Ni]"], "conditions": "雷尼镍催化加氢"},
+                "children": [
+                  {"type": "mol", "smiles": "[H][H]", "name": "氢气"},
+                  {
+                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮",
+                    "children": [{
+                      "type": "reaction",
+                      "metadata": {
+                        "name": "傅-克酰基化（HF）",
+                        "reagents": ["F"],
+                        "conditions": "氟化氢既作催化剂又作溶剂"
+                      },
+                      "children": [
+                        {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯"},
+                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+                      ]
+                    }]
+                  }
+                ]
+              }]
+            }
+          ]
+        }]
+      }
+    }
+  ]
+}

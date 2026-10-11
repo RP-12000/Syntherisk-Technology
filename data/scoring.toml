@@ -1,0 +1,193 @@
+# M10 评分配置。
+# 这里所有数字都是初稿，要用历史案例回测和化学家盲评来校准（PPT 附录 A、附录 E）。
+# 改完重启服务即可生效；每次分析会把当时用的配置存进结果里，方便事后复现。
+
+version = "2026-10-draft1"
+
+# 步骤分 = Σ（维度分 × 权重）。某个维度没有数据时不计入，其余权重按比例放大。
+[weights]
+literature = 0.30    # 文献依据
+operation = 0.20     # 操作复杂度
+safety = 0.20        # 毒性与安全
+availability = 0.15  # 可得性与成本
+yield = 0.10         # 产率
+green = 0.05         # 绿色化学
+
+[dimension_labels]
+literature = "文献依据"
+operation = "操作复杂度"
+safety = "毒性与安全"
+availability = "可得性与成本"
+yield = "产率"
+green = "绿色化学"
+
+# 写进句子里用的短名字（“操作一项接近满分”比“操作复杂度接近满分”不容易读反）
+[dimension_short_labels]
+literature = "文献"
+operation = "操作"
+safety = "安全"
+availability = "可得性"
+yield = "产率"
+green = "绿色化学"
+
+# 路线分 = mean_coefficient × 各步平均分 + weakest_coefficient × 最弱一步
+[route]
+mean_coefficient = 0.6
+weakest_coefficient = 0.4
+
+# ---------------------------------------------------------------- 证据等级（M5）
+# “是不是同类反应”有两种判断办法（代码在 syntherisk/modules/m05_precedents.py）：
+#
+#   按反应中心：这一步带原子映射时用（AiZynthFinder 给的每一步都带，USPTO 先例也带）。比的是到底改了哪些键，
+#               一模一样才算同类反应；成的键一样、掉下去的基团不一样的算相关反应。这种办法没有阈值可调，
+#               下面只有 related_score_share、high / low_similarity_threshold、no_precedent_score、max_precedents 对它起作用。
+#               哪些写法算“一样”（氯溴碘和磺酸酯算同一种离去基团、芳环上的和烷基上的羟基不分……）
+#               写在 m01_structure.py 的 center_class 里，改了以后重启就生效，不用重新导数据。
+#   按指纹：    这一步没有原子映射时用（内置的演示路线、手工给的路线）。下面带“粗筛”“细比”字样的阈值只对它起作用。
+#               这一步有映射、先例却没有的时候，按指纹找到的先例只当旁证（算相关反应）。
+#
+# “底物像不像”两种办法都用产物的结构指纹（定义在 m01_structure.py），换指纹就要重新定 high / low_similarity_threshold。
+#
+# 以下是按指纹比较时这些数字的来历。它们是用几组例子试出来的起点，要用历史案例回测来校准：
+#   同类反应：芳基酮、环己酮、丁酮的还原互相是 1.0；醛还原、酯还原、还原胺化对酮还原是 0.33–0.50，
+#             所以最初取 0.6（后来提到 0.65，见下），把“相关但不是同一类”的挡在外面。换一种酰化试剂（酰氯换酸酐）现在不算同类。
+#   底物相似：对 1-(4-异丁基苯基)乙醇，多一个碳的同系物 0.93、换成别的烷基 0.72–0.85，算高度相似；
+#             没有取代基的 0.65、氯代的 0.52、萘基的 0.48，算低相似；环己醇、2-丁醇只有 0.05，不算可参考。
+#
+# 导入 USPTO 全量数据以后又抽查了十几个反应（2026-10-10），按结果改了三处：
+#   1. same_class_threshold 从 0.60 提到 0.65。类型相似度 0.667 的先例多半是同一种转化、只是写法不同
+#      （比如先例把 HCl、氢氧根也写成了反应物），该保留；刚好 0.6 的里面有明显不相干的。
+#   2. 同样像的两条先例，反应类型完全一致的排前面。
+#   3. 产物比反应物多出 max_unaccounted_atoms 个以上重原子时（反应物没给全），不找相似先例。
+# 这仍然只是抽查，不是系统的回测。
+#
+# 接着又发现一类错判：产物一样、反应是另一回事的专利，被当成了高相似先例（把“水杨酸乙酰化”当成
+# “2-氟苯甲酸和乙酸成酯”的依据，结果这条不靠谱的路线排到了第一）。所以找相似先例改成两步：
+#   第一步在整个库里用折叠成位的指纹粗筛（same_class_threshold、related_class_threshold）；
+#   第二步对筛出来的几十条数着个数细比（class_match_*）：够一致的才算同类反应；只是沾边的算“相关反应”，
+#   最多给 E3 的最低一段分（related_score_share），不能算高相似先例，也不借用它的产率和试剂。
+# 对 24 个例子核对过（17 个真实的反应，7 个编的或者只是沾边的）：
+#   真实的 17 个里 16 个是 E1 / E2；剩下 1 个是逆合成模型把试剂（二甲基亚砜）写成了反应物，落在 E3。
+#   编的 7 个里 6 个不高于 E3（但有两个拿到了 66–69 分，偏高）；
+#   还有 1 个错判成 E2：“乙酰胺 + 对溴苯酚 → 对乙酰氨基酚”被当成了“苯胺 N-酰化”的同类。
+#   这种不看原子对应关系的比法，分不清“酰胺的 N-芳基化”和“苯胺的 N-酰化”：两边增减的原子类型一模一样。
+#   所以带原子映射的步骤改成了按反应中心比（见最上面）；指纹只留给没有映射的步骤。
+[evidence]
+same_class_threshold = 0.65       # 粗筛：反应类别指纹相似度达到它，优先拿去细比
+related_class_threshold = 0.50    # 粗筛：到这个数的也少量拿去细比
+class_match_strict = 0.65         # 细比：原子类型的增减有这么一致，才算“同类反应”
+class_match_related = 0.45        # 细比：到这个数算“相关反应”；再低就不列了
+related_score_share = 0.3         # 只有相关反应时，文献分落在 E3 分数段最下面的这一部分
+max_unaccounted_atoms = 4
+high_similarity_threshold = 0.70  # E2：底物高度相似（PPT 建议值 0.7，待定）
+low_similarity_threshold = 0.20   # E3 的下限：同类反应但底物相似度比这还低，就不当作可参考的先例
+no_precedent_score = 15           # E4 且没有任何模型依据时的文献分
+max_precedents = 8                # 证据卡里最多列几条先例
+
+[evidence.levels.E1]
+label = "文献直接报道"
+stars = 3
+band = [90, 100]
+[evidence.levels.E2]
+label = "高相似先例"
+stars = 2
+band = [70, 90]
+[evidence.levels.E3]
+label = "低相似先例"
+stars = 1
+band = [40, 70]
+[evidence.levels.E4]
+label = "仅模型预测"
+stars = 0
+band = [0, 40]
+
+# ---------------------------------------------------------------- 复杂度三档（A7）
+[complexity.concise]
+label = "简洁"
+max_steps = 3
+max_steps_without_precedent = 0
+[complexity.balanced]
+label = "平衡"
+max_steps = 6
+max_steps_without_precedent = 1
+[complexity.explore]
+label = "探索"
+max_steps = 10
+max_steps_without_precedent = 99
+
+# ---------------------------------------------------------------- 可得性（M4）
+[availability]
+inventory = 100
+purchasable_inventory_first = 70  # “库存优先”档：要买的原料分数低于库存里的
+purchasable_any = 100             # “不限”档：能买到就算满分
+unavailable = 0
+
+# ---------------------------------------------------------------- 毒性与安全（M6）
+[safety]
+# 内置试剂表里没有的物质去查 PubChem。除了欧盟统一分类，企业申报的分类也算，
+# 但一条危险性说明要占到全部申报的这个百分比才采用（少数几家的申报不算）。
+pubchem_min_share = 30
+
+# 一步里最重的一项全额扣分，第二项扣一半，第三项扣四分之一，依次减半。
+[safety.penalties]
+acute_toxic_12 = 40
+explosive = 40
+cmr_1 = 35
+pyrophoric = 20
+cmr_2 = 20
+acute_toxic_3 = 15
+extremely_flammable = 15
+water_reactive = 12
+corrosive = 10
+organ_toxicity = 10
+controlled_strict = 10
+oxidizer = 8
+highly_flammable = 5
+sensitizer = 5
+controlled_basic = 2
+
+# ---------------------------------------------------------------- 操作复杂度（M7）
+[operation]
+base = 100
+simple_from = 80   # ≥ 80 简单，50–79 中等，< 50 复杂
+medium_from = 50
+
+# ---------------------------------------------------------------- 绿色化学（M9）
+[green]
+atom_economy_weight = 0.6
+solvent_weight = 0.4
+[green.solvent_scores]
+recommended = 100
+problematic = 60
+hazardous = 30
+highly_hazardous = 0
+
+# ---------------------------------------------------------------- 置信度
+# 每一步：E1 高；E2 相似度够高算高，否则中；E3 中；E4 低；先例库没导入时一律中。
+# 整条路线：低置信步骤达到 low_steps_for_low 个，或占比超过 low_fraction_for_low，就是“低”；
+#           只要有 1 个低置信步骤，或中置信步骤不少于 medium_steps_for_medium 个，
+#           或中置信步骤占比超过 medium_fraction_for_medium（短路线：两步里有一步只有低相似先例），就是“中”。
+# 另外：一步里有数据的维度，权重加起来不到 min_assessed_weight（按上面的权重，0.3 相当于有文献依据一项，
+#       或者操作、安全里有一项再加点别的），这一步的分数只是拿可得性、绿色化学这些小项凑出来的：
+#       算低置信度，而且不计入路线分（除非整条路线的每一步都这样）。
+[confidence]
+e2_high_similarity = 0.85
+low_steps_for_low = 2
+low_fraction_for_low = 0.34
+medium_steps_for_medium = 2
+medium_fraction_for_medium = 0.34
+min_assessed_weight = 0.3
+
+# ---------------------------------------------------------------- 规模（A12）
+# 报告里的物料清单按这个目标产量折算（毫克）。
+[scale]
+mg = 10
+hundred_mg = 100
+g = 1000
+
+[weakest_link]
+suggestion = "建议先做 50 mg 小试验证第 {step} 步"
+
+# 软偏好（比如“尽量不过柱色谱”）命中一次，在步骤分上扣这么多分
+[soft_preference]
+penalty = 8
