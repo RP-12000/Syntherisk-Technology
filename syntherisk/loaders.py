@@ -15,7 +15,8 @@
         catalog_compounds 表（在售目录）   流水线第 3 阶段，M4 判断原料能不能买到
 
 数据从哪来、到哪去
-    先例库    Lowe 整理的 USPTO 专利反应（.rsmi 文件，制表符分隔），或者列名对得上的 CSV
+    先例库    Lowe 整理的 USPTO 专利反应（.rsmi 文件，制表符分隔）、列名对得上的 CSV，
+              或者每行 “DOI|反应 SMILES” 的期刊反应文件（van der Lingen 整理的学术文献反应，来源编号 academic13k）
               → 每一行算成先例库的一行（modules/m05_precedents.py 的 precedent_values：
                 规范化、反应编号、两种指纹、反应中心）
               → 分批写进 reaction_precedents 表
@@ -34,6 +35,7 @@
     LoaderError        导入做不了时抛的错误（来源没登记、文件不对）
     _check_source      确认数据来源登记过并且允许使用
     _check_file        确认文件存在、不是压缩包
+    _is_doi_line       这一行是不是 “DOI|反应 SMILES” 的写法
     _rows              逐行读先例文件
     _number            文字转小数
     _convert_row       一行原始数据 → 先例库一行的各列（可以放到别的进程里算）
@@ -143,30 +145,55 @@ def _check_file(path: Path) -> None:
 # ---------------------------------------------------------------- 先例库（M5）
 
 
+def _is_doi_line(line: str) -> bool:
+    """这一行是不是 “DOI|反应 SMILES” 的写法：竖线左边以 “10.” 开头（DOI 都这样开头），右边正好有两个 “>”。
+
+    参数：
+        line  文件里的一行文字。
+    返回：
+        True / False。
+    谁在用：
+        本文件的 _rows：只看文件的第一行，决定整个文件按哪种格式读。
+    """
+    # partition 在第一个 “|” 处切成三段：左边、“|” 本身（没有竖线时是空字符串）、右边
+    doi, bar, reaction = line.strip().partition("|")
+    return bool(bar) and doi.strip().startswith("10.") and reaction.count(">") == 2
+
+
 def _rows(path: Path) -> Iterator[dict[str, str]]:
-    """读 Lowe 的 USPTO .rsmi 文件（制表符分隔）或普通 CSV，列名不分大小写。
+    """读 Lowe 的 USPTO .rsmi 文件（制表符分隔）、普通 CSV，或者每行 “DOI|反应 SMILES” 的期刊反应文件。
 
     这是一个生成器：一行一行地读、一行一行地交出去，不把整个文件读进内存（USPTO 全量约 180 万行）。
     也因为是生成器，文件是在第一次向它要数据时才打开、才检查表头的，不是在调用 _rows(path) 的那一刻。
 
     参数：
-        path  文件路径。必须是 UTF-8 编码，第一行是表头。
+        path  文件路径。必须是 UTF-8 编码。.rsmi 和 CSV 的第一行是表头，列名不分大小写。
+              “DOI|反应 SMILES” 的文件没有表头，第一行就是数据（van der Lingen 整理的学术文献反应就是这样，
+              data/data_sources.toml 里的 academic13k）；第一行符合 _is_doi_line 的，整个文件按这种格式读。
     产出：
         每个数据行一个字典 {字段名: 单元格文字}。字段名是 _COLUMN_ALIASES 左边的那些，
         只包含表头里找得到的列；单元格去掉了首尾空白，这一行不够长时缺的格子是空字符串。
+        “DOI|反应 SMILES” 的文件每一行给 {"doi": …, "reaction_smiles": …}，空行跳过。
     抛出：
-        LoaderError         表头里没有反应 SMILES 那一列。
+        LoaderError         既不是 “DOI|反应 SMILES” 的文件，表头里也没有反应 SMILES 那一列。
         UnicodeDecodeError  文件不是 UTF-8 编码。
     谁在用：
         本文件的 load_precedents。
     """
     # utf-8-sig：文件开头有 BOM（有些 Windows 软件会加）就自动去掉；newline="" 是 csv 模块要求的打开方式
     with path.open(encoding="utf-8-sig", newline="") as handle:
-        # 看第一行猜分隔符：有制表符、而且不比逗号少，就按制表符分；否则按逗号分
         first = handle.readline()
-        delimiter = "\t" if first.count("\t") >= first.count(",") and "\t" in first else ","
-        # 回到文件开头，让 csv 从表头那一行读起
+        # 回到文件开头：下面不论按哪种格式，都从第一行读起
         handle.seek(0)
+        if _is_doi_line(first):
+            for line in handle:
+                # 在第一个 “|” 处切开：左边是 DOI，右边是反应 SMILES（SMILES 里不会出现 “|”）
+                doi, _, reaction = line.strip().partition("|")
+                if doi or reaction:
+                    yield {"doi": doi.strip(), "reaction_smiles": reaction.strip()}
+            return
+        # 看第一行猜分隔符：有制表符、而且不比逗号少，就按制表符分；否则按逗号分
+        delimiter = "\t" if first.count("\t") >= first.count(",") and "\t" in first else ","
         reader = csv.reader(handle, delimiter=delimiter)
         header = [cell.strip().lower() for cell in next(reader)]
         # mapping：字段名 → 它在第几列。每个字段按别名的先后找，找到第一个就不再找
@@ -176,7 +203,8 @@ def _rows(path: Path) -> Iterator[dict[str, str]]:
                 if alias in header and field not in mapping:
                     mapping[field] = header.index(alias)
         if "reaction_smiles" not in mapping:
-            raise LoaderError("文件第一行要有表头，并且至少有一列反应 SMILES（ReactionSmiles 或 reaction_smiles）")
+            raise LoaderError("文件第一行要有表头，并且至少有一列反应 SMILES（ReactionSmiles 或 reaction_smiles）；"
+                              "或者每行写成 “DOI|反应 SMILES”")
         for cells in reader:
             yield {field: (cells[index].strip() if index < len(cells) else "") for field, index in mapping.items()}
 
@@ -253,7 +281,8 @@ def load_precedents(
 
     参数：
         ctx         运行时上下文（数据库会话工厂、数据来源登记表）。
-        path        要导入的文件：Lowe 的 USPTO .rsmi，或者表头对得上 _COLUMN_ALIASES 的 CSV。
+        path        要导入的文件：Lowe 的 USPTO .rsmi、表头对得上 _COLUMN_ALIASES 的 CSV，
+                    或者每行 “DOI|反应 SMILES” 的期刊反应文件（见 _rows）。
         source      数据来源编号（data/data_sources.toml 里登记的，比如 "uspto"、"ord"），
                     写进每一行的 source 列。
         limit       只读前多少行数据，试跑用；None 表示全部。对应命令行的 --limit。

@@ -69,6 +69,14 @@
         库里有同一个反应的记录时是 E1，文献产率取这些记录的报道值
     test_reported_yield_of_the_same_reaction_is_summarised_over_all_records_not_just_the_listed_ones
         同一反应的记录很多时，产率按全部记录统计，不只是卡上列出来的那几条
+    test_journal_and_patent_precedents_are_searched_separately_and_journals_come_first
+        期刊论文和专利各自检索、各有名额，卡上期刊论文那一组排在前面；分组不改变证据等级
+    test_the_same_reaction_reported_in_a_journal_is_preferred_over_a_patent
+        同一反应期刊和专利都报道过时，期刊那条排第一，借试剂和条件也用它
+    test_a_step_using_two_molecules_of_one_reactant_matches_a_patent_that_writes_it_once
+        2X + Y → Z：这一步把 X 写了两次、专利只写一次，也认作同一反应
+    test_a_journal_record_that_writes_the_second_reactant_with_the_reagents_is_the_same_reaction
+        期刊记录把第二种原料写在试剂栏里，也认作同一反应，只列一次
     test_similar_substrate_same_reaction_type_is_graded_by_similarity
         没有同一反应时按同类反应的底物相似度定级；完全没有先例是 E4
     test_a_reaction_with_most_of_the_product_unaccounted_for_gets_no_similar_precedents
@@ -527,6 +535,30 @@ def test_a_step_using_two_molecules_of_one_reactant_matches_a_patent_that_writes
     with ctx.session_factory() as session:
         found = _search(ctx, session).find([aniline, aniline, phosgene], urea)
     assert found["level"] == "E1" and found["n_exact"] == 1 and found["precedents"][0]["exact"]
+
+
+def test_a_journal_record_that_writes_the_second_reactant_with_the_reagents_is_the_same_reaction(ctx):
+    """期刊记录把第二种原料写在试剂栏里，逆合成引擎给的这一步把它列在反应物里：也认作同一反应（E1），只列一次。
+
+    保证的行为：m05_precedents.py 的 _exact_rows、_reagent_side_rows。没有反应中心的先例，产物一样、
+    先例反应物栏里的每一种这一步都有、这一步多出来的反应物都在先例的试剂栏里，就算同一反应。
+    试剂栏里没有这种反应物的记录不算。
+    为什么重要：期刊数据（academic13k）没有原子映射，常常只把主要原料写在反应物栏里。不这样认的话，
+    期刊里明明报道过的同一个反应只能算相似先例，证据等级偏低，“期刊优先”也就落了空。
+    怎么读：期刊记录写的是“5-碘水杨酸 > 硫酸.甲醇 > 5-碘水杨酸甲酯”（Fischer 酯化），这一步是
+    “5-碘水杨酸 + 甲醇 → 5-碘水杨酸甲酯”。另一条记录用三甲基硅基重氮甲烷做甲酯，试剂栏里没有甲醇，不算同一反应。
+    """
+    acid, methanol, ester = "O=C(O)c1cc(I)ccc1O", "CO", "COC(=O)c1cc(I)ccc1O"
+    _add_journal(ctx, f"{acid}>OS(=O)(=O)O.{methanol}>{ester}", document_id="J-FISCHER", yield_pct=90.0)
+    _add_journal(ctx, f"{acid}>C[Si](C)(C)C=[N+]=[N-]>{ester}", document_id="J-TMSCHN2")
+    with ctx.session_factory() as session:
+        found = _search(ctx, session).find([acid, methanol], ester)
+    assert found["level"] == "E1" and found["n_exact"] == 1
+    # 第一条就是那篇 Fischer 酯化，标成同一反应；它没有在相似先例里再出现一次
+    first = found["precedents"][0]
+    assert first["document_id"] == "J-FISCHER" and first["exact"]
+    assert [p["document_id"] for p in found["precedents"]].count("J-FISCHER") == 1
+    assert not any(p["exact"] for p in found["precedents"] if p["document_id"] == "J-TMSCHN2")
 
 
 def test_similar_substrate_same_reaction_type_is_graded_by_similarity(ctx):

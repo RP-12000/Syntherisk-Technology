@@ -16,7 +16,7 @@
 每条命令对应的模块、读写的东西
     status            各模块现状（和 GET /api/meta/modules 相同）加上库里的数据量。只读
     seed-demo         M0、M4：写 organizations、users、memberships、projects、inventory_items
-    load-precedents   M5：读 .rsmi / CSV 文件，写 reaction_precedents、library_versions；
+    load-precedents   M5：读 .rsmi / CSV / “DOI|反应 SMILES” 文件，写 reaction_precedents、library_versions；
                       带 --replace 时先删掉这个来源原有的数据
     load-catalog      M4：读文件，写 catalog_compounds
     check-hazards     M6：联网查 PubChem，和 data/compounds.csv 比对。只打印差异，不改任何文件和数据库
@@ -151,8 +151,9 @@ def cmd_load_precedents(ctx: AppContext, args) -> None:
     """load-precedents 命令：把一个反应数据文件导入先例库（M5）。真正的工作在 loaders.load_precedents() 里。
 
     命令行选项（解析后在 args 上）：
-        --source   数据来源编号，必须先在 data/data_sources.toml 里登记并允许使用，比如 uspto、ord
-        --file     文件路径：Lowe 整理的 USPTO .rsmi（制表符分隔），或者带表头的 CSV。压缩包要先解压
+        --source   数据来源编号，必须先在 data/data_sources.toml 里登记并允许使用，比如 uspto、academic13k
+        --file     文件路径：Lowe 整理的 USPTO .rsmi（制表符分隔）、带表头的 CSV，
+                   或者每行 “DOI|反应 SMILES” 的期刊反应文件。压缩包要先解压
         --limit    只导入前 N 行（试跑用）；不写就全部导入
         --replace  先删掉这个来源原有的数据再导入。重新导同一个文件时要加，不然同样的数据会有两份
         --workers  用几个进程算指纹和反应中心；不写（默认 0）就用一半的 CPU 核，至少 1 个
@@ -331,8 +332,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # required=True：必须给；type=int：把参数转成整数；
     # action="store_true"：这个选项不带值，写了就是 True，不写就是 False
-    precedents = commands.add_parser("load-precedents", help="导入反应先例（USPTO .rsmi 或 CSV）")
-    precedents.add_argument("--source", required=True, help="data/data_sources.toml 里登记的来源编号，比如 uspto、ord")
+    precedents = commands.add_parser("load-precedents", help="导入反应先例（USPTO .rsmi、CSV，或每行 DOI|反应 SMILES 的文件）")
+    precedents.add_argument("--source", required=True,
+                            help="data/data_sources.toml 里登记的来源编号，比如 uspto、academic13k")
     precedents.add_argument("--file", required=True)
     precedents.add_argument("--limit", type=int, default=None, help="只导入前 N 行，试跑时用")
     precedents.add_argument("--replace", action="store_true", help="先删掉这个来源原有的数据")

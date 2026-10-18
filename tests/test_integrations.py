@@ -57,8 +57,8 @@ pytest 自带的夹具：
         顶替 AiZynthFinder 这个库本身，用来测桥接脚本 aizynth_bridge.run 调用它的先后次序。
     fakeredis.FakeRedis
         顶替 Redis 服务：一个进程内的假 Redis，RedisQueue 用到的命令它都支持。
-    手写的 .rsmi 文件、InChIKey 清单
-        顶替 USPTO 专利反应文件和在售清单文件，各只有两行数据。
+    手写的 .rsmi 文件、“DOI|反应 SMILES” 文件、InChIKey 清单
+        顶替 USPTO 专利反应文件、期刊反应文件和在售清单文件，各只有两行数据。
 
 ---- 本文件里有什么（每个测试保证的行为）----
 
@@ -98,6 +98,9 @@ pytest 自带的夹具：
         test_loading_precedents_changes_evidence_levels_in_the_next_analysis
             导入先例库：该拒绝的拒绝，统计数字对得上，多进程和单进程结果一样；
             导入以后，下一次分析的证据等级、产率、置信度、排名随之改变
+        test_journal_reactions_written_as_doi_and_smiles_are_loaded_as_journal_articles
+            每行 “DOI|反应 SMILES” 的期刊反应文件能直接导入，记成期刊论文，链接指向 doi.org；
+            抽查出错多的 ReactionSeek 登记为不允许导入
         test_a_database_created_before_a_column_was_added_gets_it_on_startup
             早先建的数据库缺 center 这一列时，启动自动补上，原有的数据不动
         test_loading_a_purchasable_catalog
@@ -121,7 +124,7 @@ from syntherisk.external import ExternalServiceError, PubChemClient, collect_ghs
 from syntherisk.modules import aizynth_bridge, m03_retrosynthesis
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m03_retrosynthesis import AiZynthEngine, EngineError, SearchRequest, SearchResult, build_engine
-from syntherisk.modules.m05_precedents import precedent_from_reaction
+from syntherisk.modules.m05_precedents import document_url, precedent_from_reaction
 from syntherisk.modules.m06_safety import SafetyService
 from syntherisk.routes import build_graph, build_skeleton
 from syntherisk.taskqueue import QUEUE_KEY, RedisQueue
@@ -1409,6 +1412,44 @@ def test_loading_precedents_changes_evidence_levels_in_the_next_analysis(client,
     # 两步里有一步是低置信步骤，占比 0.5 超过了 low_fraction_for_low（0.34），所以整条路线的置信度是“低”
     assert kolbe["confidence_label"] == "低" and kolbe["confidence_reason"] == "第 1 步无文献先例"
     assert by_name["乙酸酐酰化"]["rank"] < kolbe["rank"]  # 低置信度路线不排在高置信度路线前面
+
+
+def test_journal_reactions_written_as_doi_and_smiles_are_loaded_as_journal_articles(ctx, tmp_path):
+    """每行 “DOI|反应 SMILES”、没有表头的期刊反应文件能直接导入，每一行记成期刊论文。
+
+    保证的行为：
+        syntherisk/loaders.py 的 _rows 认得这种文件（van der Lingen 整理的学术文献反应就是这样，
+        data/data_sources.toml 里的 academic13k）：DOI 当文献号，文献类型是期刊论文，链接指向 doi.org；
+        读不出来的行跳过并计数，空行不算一行。
+        data/data_sources.toml 里 ReactionSeek 登记为不允许导入（结构是大模型从名称换算的，抽查错误多）。
+    怎么读：
+        准备  在临时目录里写一个这种格式的文件。第一行是 4-溴苯甲醚 + 4-甲氧基苯酚 → 双(4-甲氧基苯基)醚，
+              试剂栏是碘化亚铜，写法照原数据（不是规范写法，还带着显式的 [H]）；第二行不是反应；最后是一个空行。
+        然后  用 academic13k 导入，看统计数字和写进库里的那一行；再用 reactionseek 导入，应该被拒绝。
+    为什么重要：证据卡上期刊论文排在专利前面，先例库里的期刊论文就是从这种文件来的。
+    认不出格式的话，整个文件会因为“没有表头”被拒绝；认错了文献类型，期刊论文会被当成专利排到后面。
+    """
+    journal = tmp_path / "reactionSmilesAcademicDOI.txt"
+    journal.write_text(
+        "10.3762/bjoc.8.122|C1(=CC=C(C=C1)OC)Br.C1(=CC=C(C=C1)OC)O[H]>[Cu]I"
+        ">C1(=CC=C(C=C1)OC)OC2=CC=C(C=C2)OC\n"
+        "10.1000/not-a-reaction|this is not a reaction\n"
+        "\n",
+        encoding="utf-8",
+    )
+    stats = loaders.load_precedents(ctx, journal, "academic13k", progress=lambda _m: None)
+    # read 2：空行不算一行；loaded 1、skipped 1；数据里没有原子映射，所以 with_center 是 0
+    assert stats == {"read": 2, "loaded": 1, "skipped": 1, "duplicates": 0, "failed": 0, "with_center": 0}
+    with ctx.session_factory() as session:
+        # scalars(…).one()：库里正好一条先例，把它取出来；不是正好一条就报错
+        row = session.scalars(select(models.ReactionPrecedent)).one()
+    assert (row.source, row.doc_type) == ("academic13k", "journal")
+    assert row.document_id == row.doi == "10.3762/bjoc.8.122"
+    # 产物和规范写法的双(4-甲氧基苯基)醚是同一个分子；碘化亚铜记在试剂里
+    assert row.product_key == chem.main_fragment_key14("COc1ccc(Oc2ccc(OC)cc2)cc1") and row.agents
+    assert document_url(row.doc_type, row.document_id, row.doi) == "https://doi.org/10.3762/bjoc.8.122"
+    with pytest.raises(loaders.LoaderError, match="不允许使用"):
+        loaders.load_precedents(ctx, journal, "reactionseek", progress=lambda _m: None)
 
 
 def test_a_database_created_before_a_column_was_added_gets_it_on_startup(tmp_path):

@@ -23,6 +23,30 @@ commercial_use = "可以，要求相同方式共享；和自有数据混合前�
 commercial_use_en = "Yes, share-alike required; get legal confirmation before mixing with proprietary data"
 allowed = true
 
+[source.academic13k]
+name = "学术文献反应 SMILES 13K（van der Lingen，2006–2026，第 2 版）"
+name_en = "Reaction SMILES 13K from the academic literature (van der Lingen, 2006–2026, v2)"
+used_for = "期刊论文先例（M5）"
+used_for_en = "Journal precedents (M5)"
+license = "CC BY 4.0"
+commercial_use = "可以，要注明出处"
+commercial_use_en = "Yes, with attribution"
+allowed = true
+notes = "出处：Rik van der Lingen，Reaction SMILES 13K organic chemistry academic literature 2006 - 2026 v2，Zenodo，https://doi.org/10.5281/zenodo.23097616，许可 CC BY 4.0（https://creativecommons.org/licenses/by/4.0/）。每条先例带原文 DOI。导入时只整理了格式（规范化 SMILES，读不出来的行跳过）。数据里没有产率，也没有原子映射，所以这些先例算不出反应中心，按结构指纹比对。"
+notes_en = "Source: Rik van der Lingen, Reaction SMILES 13K organic chemistry academic literature 2006 - 2026 v2, Zenodo, https://doi.org/10.5281/zenodo.23097616, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Each precedent links to its article's DOI. On import only the format was tidied (SMILES normalized, unreadable lines skipped). The data has no yields and no atom maps, so these precedents have no reaction centre and are compared by structural fingerprints."
+
+[source.reactionseek]
+name = "ReactionSeek：Organic Syntheses 1921–2021 的反应（大模型抽取）"
+name_en = "ReactionSeek: Organic Syntheses reactions 1921–2021 (extracted by a language model)"
+used_for = "（暂不使用）"
+used_for_en = "(not used for now)"
+license = "MIT"
+commercial_use = "许可允许；但结构是大模型从化合物名称换算的，抽查错误多，暂不导入"
+commercial_use_en = "The licence allows it, but the structures were converted from compound names by a language model and spot checks found many errors, so it is not imported for now"
+allowed = false
+notes = "Zenodo，https://doi.org/10.5281/zenodo.18523416（v1.0.1-nc）。2026-10-18 抽查：随机 14 条里有 4 条的主原料或产物结构是错的；按原子守恒和结构相似度过滤后剩 2,157 条，再抽 16 条仍有 3 条产物错。"
+notes_en = "Zenodo, https://doi.org/10.5281/zenodo.18523416 (v1.0.1-nc). Spot check on 2026-10-18: 4 of 14 random reactions had a wrong main reactant or product structure; filtering by atom conservation and structural similarity left 2,157 reactions, and 3 of 16 sampled from those still had a wrong product."
+
 [source.pubchem_ghs]
 name = "PubChem GHS 分类"
 name_en = "PubChem GHS classification"

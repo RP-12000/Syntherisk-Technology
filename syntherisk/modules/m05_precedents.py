@@ -54,7 +54,8 @@ LibraryVersion 两张表）、reference（scoring.toml 的 [evidence] 一节、d
 ---- 一步反应是怎么定级的（PrecedentSearch.find）----
 
     1. 先例库是空的：不评，等级和分数都是 None。
-    2. 按反应编号查“同一反应”（_exact_rows）。查到 -> E1。
+    2. 按反应编号查“同一反应”（_exact_rows）。没有原子映射的期刊记录常把第二种原料写在试剂栏里，
+       产物一样、这一步多出来的反应物都在它的试剂栏里的，也算同一反应（_reagent_side_rows）。查到 -> E1。
     3. 找相似先例：
          这一步有反应中心、库里也有带反应中心的先例 -> 按反应中心比（_class_rows）；
              另外把库里没带映射的那部分先例按指纹补查一遍，查到的只当旁证。
@@ -86,6 +87,7 @@ LibraryVersion 两张表）、reference（scoring.toml 的 [evidence] 一节、d
         db_empty             先例库是不是空的
         find                 入口：一步反应 -> 证据等级、文献分、先例列表、产率
         _exact_rows          同一反应
+        _reagent_side_rows   同一反应：期刊记录把一部分反应物写在了试剂栏里
         _rank                相似先例的排序规则
         _class_rows          按反应中心找相似先例
         _similar_rows        按指纹找相似先例（粗筛 + 细比）
@@ -558,7 +560,8 @@ class PrecedentSearch:
         index      先例库的内存索引（PrecedentIndex），整个进程共用一份。
 
     find() 里的三路检索：
-        同一反应    _exact_rows()    反应物、产物都一样（按 reaction_key 查数据库）          -> E1
+        同一反应    _exact_rows()    反应物、产物都一样（按 reaction_key 查数据库）；没有原子映射、
+                                     把一部分反应物写在试剂栏里的期刊记录也算（_reagent_side_rows）  -> E1
         按反应中心  _class_rows()    这一步带原子映射、库里的先例也有反应中心时用            -> E2 / E3
         按指纹      _similar_rows()  这一步没有映射时用；也用来补查库里没带映射的那部分先例  -> E2 / E3，或只当旁证
         都没找到 -> E4。等级和分数怎么定见 _grade()。
@@ -661,7 +664,7 @@ class PrecedentSearch:
         # 而逆合成引擎会把两份都列出来。所以再按“每种原料只算一次”算一个编号，两个都查
         keys = [key for key in dict.fromkeys([chem.reaction_key(reactants, product),
                                                chem.reaction_key(reactants, product, distinct=True)]) if key]
-        exact_rows = self._exact_rows(keys) if keys else []
+        exact_rows = self._exact_rows(keys, reactants, product)
         # 产物比反应物多出一大块（反应物没给全）时，按指纹就比不准“反应类型”了：不找相似先例，免得硬凑出一个等级
         unaccounted = self._unaccounted_atoms(reactants, product)
         balanced = unaccounted <= int(self.config.get("max_unaccounted_atoms", 4))
@@ -687,6 +690,9 @@ class PrecedentSearch:
             # 第三路：整步按指纹比。反应物没给全时干脆不找
             similar = (self._similar_rows(reactants, product, exclude_keys=keys, limit=limit)
                        if balanced else [])
+        # 反应物写在试剂栏里的同一反应（_reagent_side_rows）反应编号和这一步不同，上面按编号排除不掉，这里按 id 去掉
+        exact_ids = {row.id for row in exact_rows}
+        similar = [item for item in similar if item[0].id not in exact_ids]
 
         # 拼先例列表：按文献类型分组，期刊论文在前、专利在后（DOC_TYPE_ORDER）。每种类型各自最多 limit 条：
         # 先是这种类型里同一反应的记录（两种相似度都记 1.0），再是相似先例。上面的检索也是每种类型各自挑候选的，
@@ -753,31 +759,41 @@ class PrecedentSearch:
 
     # ------------------------------------------------------------ 检索
 
-    def _exact_rows(self, keys: list[str]) -> list[models.ReactionPrecedent]:
-        """库里和这一步是“同一反应”的先例：反应物和产物都一样（reaction_key 是 keys 之一）。
+    def _exact_rows(
+        self, keys: list[str], reactants: list[str], product: str
+    ) -> list[models.ReactionPrecedent]:
+        """库里和这一步是“同一反应”的先例。两种都算：
+            1. 反应物和产物都一样（reaction_key 是 keys 之一）；
+            2. 没有原子映射的期刊记录，产物一样，只是把一部分反应物写在了试剂栏里（见 _reagent_side_rows）。
 
         参数：
-            keys  这一步的反应编号（chem.reaction_key 的结果），一个或两个：照写的和“每种原料只算一次”的，
-                  见 find()。编号不看试剂，也不分立体异构。
+            keys       这一步的反应编号（chem.reaction_key 的结果），一个或两个：照写的和“每种原料只算一次”的，
+                       见 find()。编号不看试剂，也不分立体异构。结构读不出来时是空列表。
+            reactants  这一步的反应物，SMILES 列表。
+            product    这一步的产物，SMILES。
         返回：
             ReactionPrecedent 列表：期刊论文在前、专利在后（DOC_TYPE_ORDER）；同一种类型里有产率的排前面，
             产率高的在前，产率一样时年份新的在前；同一篇文献里重复记录的同一个反应只留一条。没有就是空列表。
         副作用：
-            查一次数据库（reaction_key 列上有索引），最多取 200 行；期刊论文先取，不会因为专利太多被截掉。
+            查数据库最多两次：按反应编号（reaction_key 列上有索引）最多取 200 行，期刊论文先取，不会因为专利太多被截掉；
+            再按产物（_reagent_side_rows）查一次。
         谁在用：
             本类的 find()。
         """
-        # select(模型).where(...) 取整行，session.scalars 把每一行变成一个 ReactionPrecedent 对象。
-        # .limit(200) 是上限：同一个反应的记录再多也只看 200 条
-        rows = list(
-            self.session.scalars(
-                select(models.ReactionPrecedent)
-                .where(models.ReactionPrecedent.reaction_key.in_(keys))
-                # 期刊论文排在前面再截 200 条（doc_type != "journal" 对期刊是 False，排在 True 前面）
-                .order_by(models.ReactionPrecedent.doc_type != "journal")
-                .limit(200)
+        rows: list[models.ReactionPrecedent] = []
+        if keys:
+            # select(模型).where(...) 取整行，session.scalars 把每一行变成一个 ReactionPrecedent 对象。
+            # .limit(200) 是上限：同一个反应的记录再多也只看 200 条
+            rows = list(
+                self.session.scalars(
+                    select(models.ReactionPrecedent)
+                    .where(models.ReactionPrecedent.reaction_key.in_(keys))
+                    # 期刊论文排在前面再截 200 条（doc_type != "journal" 对期刊是 False，排在 True 前面）
+                    .order_by(models.ReactionPrecedent.doc_type != "journal")
+                    .limit(200)
+                )
             )
-        )
+        rows += self._reagent_side_rows(reactants, product, keys)
         # 排序的键是四项的元组，Python 从左到右依次比较：
         #   doc_type_rank         文献类型的先后：期刊论文 0，专利 1，数据集 2
         #   r.yield_pct is None   有产率的是 False，排在没有产率的（True）前面
@@ -786,6 +802,55 @@ class PrecedentSearch:
         rows.sort(key=lambda r: (doc_type_rank(r.doc_type), r.yield_pct is None, -(r.yield_pct or 0),
                                  -(r.year or 0)))
         return self._dedupe(rows)
+
+    def _reagent_side_rows(
+        self, reactants: list[str], product: str, keys: list[str]
+    ) -> list[models.ReactionPrecedent]:
+        """没有原子映射的先例里，和这一步是同一反应、只是把一部分反应物写在了试剂栏里的那些。
+
+        期刊数据（比如 academic13k）常写成“主要原料 > 其余物质 > 产物”，第二种原料和溶剂、催化剂一起写在试剂栏里：
+        “5-碘水杨酸 > 硫酸.甲醇 > 5-碘水杨酸甲酯”。逆合成引擎给的这一步是“5-碘水杨酸 + 甲醇 → 5-碘水杨酸甲酯”，
+        反应编号对不上。三条都满足就算同一反应：产物一样（product_key）；先例反应物栏里的每一种，这一步的反应物里都有；
+        这一步多出来的反应物，每一种都出现在先例的试剂栏里。比较的是每种物质最大片段的 key14，和 reaction_key 一样不分立体异构。
+        只看没有反应中心的先例：带原子映射的专利数据在导入时已经把进入产物的物质都放进了反应物栏，按编号就对得上。
+
+        参数：
+            reactants  这一步的反应物，SMILES 列表。
+            product    这一步的产物，SMILES。
+            keys       这一步的反应编号（见 _exact_rows）。编号就对得上的先例 _exact_rows 已经查到了，这里不再取。
+        返回：
+            符合条件的 ReactionPrecedent 列表，没有排序。这一步只有一种反应物（没有“多出来的”可找）、
+            或者有结构读不出来时是空列表。
+        副作用：
+            查一次数据库：按产物（product_key 列上有索引）取没有反应中心的先例，最多 500 行。
+        谁在用：
+            本类的 _exact_rows()。
+        """
+        product_key = chem.main_fragment_key14(product)
+        # 这一步的反应物，每种取最大片段的 key14；集合会把写了两次的同一种原料并成一个
+        wanted = {chem.main_fragment_key14(smiles) for smiles in reactants}
+        if product_key is None or None in wanted or len(wanted) < 2:
+            return []
+        query = (
+            select(models.ReactionPrecedent)
+            .where(models.ReactionPrecedent.product_key == product_key,
+                   models.ReactionPrecedent.center.is_(None))
+            .limit(500)
+        )
+        if keys:
+            query = query.where(models.ReactionPrecedent.reaction_key.not_in(keys))
+        found = []
+        for row in self.session.scalars(query):
+            # 存的反应 SMILES 是整理过的 “反应物>试剂>产物”，按 “>” 正好切成三段
+            parts = row.reaction_smiles.split(">")
+            if len(parts) != 3:
+                continue
+            listed = {chem.main_fragment_key14(smiles) for smiles in parts[0].split(".") if smiles}
+            agents = {chem.main_fragment_key14(smiles) for smiles in parts[1].split(".") if smiles}
+            # <= 是集合的“包含于”：先例写的反应物这一步都有；这一步多出来的（wanted - listed）都在先例的试剂里
+            if listed and listed <= wanted and wanted - listed <= agents:
+                found.append(row)
+        return found
 
     @staticmethod
     def _rank(item) -> tuple:

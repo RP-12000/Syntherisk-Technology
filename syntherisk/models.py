@@ -717,7 +717,8 @@ class ReactionPrecedent(Base):
     # 反应的“身份”：反应物（各取最大片段的 key14，排序）和产物的 key14 拼起来算的 SHA-1，40 个十六进制字符。
     # 不看试剂，也不分立体异构。流水线里的一步和它相同，证据等级就是 E1（文献直接报道）
     reaction_key: Mapped[str] = mapped_column(String(40), index=True)  # 产物 + 反应物，判断“同一反应”
-    # 主产物的 key14（盐取最大的片段）。导入时写入，现在的检索没有用到这一列
+    # 主产物的 key14（盐取最大的片段）。导入时写入；M5 找“把一部分反应物写在试剂栏里”的同一反应时按它查
+    # （m05_precedents.PrecedentSearch._reagent_side_rows）
     product_key: Mapped[str] = mapped_column(String(14), index=True)
     # 文献报道的产率（百分数）；没有记录则为空
     yield_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
