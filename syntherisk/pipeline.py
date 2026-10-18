@@ -236,6 +236,18 @@ def add_event(session: Session, analysis_id: str, event_type: str, payload: dict
     session.add(models.AnalysisEvent(analysis_id=analysis_id, type=event_type, payload=payload))
 
 
+def best_precedent(evidence: dict[str, Any]) -> dict[str, Any] | None:
+    """一步反应的“最好的先例”：借用试剂、条件文字都用它。
+
+    M5 在 evidence["best_ref"] 里记了它的编号（期刊论文优先，见 m05_precedents.PrecedentSearch._best_ref）。
+    旧的分析结果里没有这一项，那时先例列表的第一条就是最好的那条。没有先例时返回 None。
+    谁在用：本文件的 AnalysisRunner._adopt_precedent_reagents() 和 _conditions()。
+    """
+    precedents = evidence.get("precedents") or []
+    wanted = evidence.get("best_ref")
+    return next((p for p in precedents if p.get("ref") == wanted), precedents[0] if precedents else None)
+
+
 def ensure_molecule(result: dict[str, Any], smiles: str, ctx: AppContext) -> str | None:
     """先例里的试剂可能是路线里没出现过的物质，用到时登记进 molecules。
 
@@ -722,7 +734,8 @@ class AnalysisRunner:
         # 三种情况不借：已经有试剂了；等级不够（E3、E4，或者没评估）；没有先例
         if reaction["reagents"] or evidence.get("level") not in ("E1", "E2") or not evidence["precedents"]:
             return
-        best = evidence["precedents"][0]
+        # “最好的先例”由 M5 挑好（期刊论文优先，见 m05_precedents.PrecedentSearch._best_ref）
+        best = best_precedent(evidence)
         agents = self.ctx.reference.compounds.combine_ions(best["agents"])  # 专利数据把盐拆成了离子，先拼回去
         # 逐个登记进 molecules，拿到 key14；读不出来的（ensure_molecule 返回 None）丢掉
         keys = [key for key in (ensure_molecule(self.result, smiles, self.ctx) for smiles in agents) if key]
@@ -857,7 +870,8 @@ class AnalysisRunner:
             product = molecules[reaction["product"]]["smiles"]
             precedents = reaction["evidence"]["precedents"]
             # “最好的先例”只在证据等级是 E1 / E2 时才采信（和借用试剂是同一个标准）；否则当作没有
-            best = precedents[0] if precedents and reaction["evidence"].get("level") in ("E1", "E2") else None
+            best = (best_precedent(reaction["evidence"])
+                    if precedents and reaction["evidence"].get("level") in ("E1", "E2") else None)
 
             # 条件说明文字从哪来，按先后顺序：
             #   1. 演示路线自带的（教科书层面的概述），出处记 "DEMO"

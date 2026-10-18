@@ -441,6 +441,94 @@ def test_reported_yield_of_the_same_reaction_is_summarised_over_all_records_not_
     assert found["yield"]["label"] == "文献报道 20–99%（10 个先例）" and len(found["yield"]["refs"]) == 8
 
 
+def _add_journal(ctx, reaction, *, document_id, yield_pct=None):
+    """往先例库里放一条期刊论文的先例（带 DOI，文献类型 journal）。_seed 放的都是专利，这个补上期刊。"""
+    with ctx.session_factory() as session:
+        session.add(precedent_from_reaction(reaction, source="ord", doc_type="journal", document_id=document_id,
+                                            doi=f"10.1000/{document_id.lower()}", year=2015, yield_pct=yield_pct))
+        session.commit()
+
+
+def test_journal_and_patent_precedents_are_searched_separately_and_journals_come_first(ctx):
+    """期刊论文和专利分开检索、各有各的名额，证据卡上期刊论文那一组排在前面。
+
+    保证的行为（m05_precedents.py 的 PrecedentSearch.find、_per_type、_best_ref；cards.py 的 precedent_groups）：
+      - 每种文献类型各自挑候选、各自最多列 max_precedents 条（现在是 8）：专利再多、再像，也挤不掉期刊；
+      - 列表里期刊论文在前，专利在后；
+      - 证据等级照旧按全部先例来评，分组不改变等级；
+      - 借用试剂和条件文字的“最好的先例”（best_ref）：没有同一反应时，够得上 E2 的同类先例里期刊优先；
+        期刊那条够不上（底物相似度低于 0.7）时，用最像的那条专利。
+    怎么读：放九条专利，都是对位取代的芳基甲基酮还原成醇，底物和这一步（4-异丁基苯乙酮还原）很像
+    （产物相似度 0.72–0.93）；再放一条期刊论文，是 4-甲氧基苯乙酮的还原，没那么像（0.45）。
+    分组以前卡上一共只列 8 条，这条期刊会被九条更像的专利挤掉。
+    """
+    patents = ["CCC(=O)c1ccc(CC(C)C)cc1", "CCCc1ccc(C(C)=O)cc1", "CCCCc1ccc(C(C)=O)cc1", "CC(C)CCc1ccc(C(C)=O)cc1",
+               "CCCCCc1ccc(C(C)=O)cc1", "CCc1ccc(C(C)=O)cc1", "CC(=O)c1ccc(C)cc1", "CCC(C)c1ccc(C(C)=O)cc1",
+               "CC(=O)c1ccc(C(C)C)cc1"]
+    # 每个酮把 C=O 换成 C–OH 就是对应的醇
+    _seed(ctx, [(f"{ketone}>>{ketone.replace('C(C)=O', 'C(C)O').replace('CC(=O)', 'CC(O)').replace('CCC(=O)', 'CCC(O)')}", None)
+                for ketone in patents])
+    _add_journal(ctx, "CC(=O)c1ccc(OC)cc1>>CC(O)c1ccc(OC)cc1", document_id="JOURNAL-1")
+    with ctx.session_factory() as session:
+        found = _search(ctx, session).find([KETONE], ALCOHOL)
+
+    # 最像的专利相似度 0.93，等级仍是 E2（高相似先例）：分组不影响定级
+    assert found["level"] == "E2"
+    types = [p["doc_type"] for p in found["precedents"]]
+    # 期刊那条排第一；专利最多 8 条（九条里最不像的那条没列出来）
+    assert types == ["journal"] + ["patent"] * 8
+    assert found["precedents"][0]["document_id"] == "JOURNAL-1" and found["precedents"][0]["same_class"]
+    # 专利组内仍按底物相似度从高到低
+    patent_similarities = [p["similarity"] for p in found["precedents"][1:]]
+    assert patent_similarities == sorted(patent_similarities, reverse=True)
+    # 期刊那条底物相似度 0.45，够不上 E2，借用试剂时用最像的专利（P2）
+    assert found["precedents"][0]["similarity"] < 0.7 and found["best_ref"] == "P2"
+    from syntherisk.cards import precedent_groups
+
+    groups = precedent_groups(found["precedents"], found["n_exact_by_type"])
+    assert [(g["doc_type"], g["count"], g["n_exact"]) for g in groups] == [("journal", 1, 0), ("patent", 8, 0)]
+
+
+def test_the_same_reaction_reported_in_a_journal_is_preferred_over_a_patent(ctx):
+    """同一个反应，期刊论文和专利都报道过：期刊那条排前面，借用试剂和条件时用它；产率两条一起统计。
+
+    保证的行为（m05_precedents.py 的 _exact_rows、find、_best_ref、_yield_info）：
+    同一反应的记录先按文献类型排（期刊在前），同一类型里再按产率排；best_ref 指向期刊那条；
+    n_exact_by_type 分开数；E1 的产率统计照旧用全部同一反应的记录。
+    怎么读：专利报道 KETONE → ALCOHOL 产率 95%，期刊论文报道同一个反应产率 60%。
+    """
+    _seed(ctx, [(f"{KETONE}>[Na+].[BH4-]>{ALCOHOL}", 95.0)])
+    _add_journal(ctx, f"{KETONE}>[Li+].[AlH4-]>{ALCOHOL}", document_id="JOURNAL-2", yield_pct=60.0)
+    with ctx.session_factory() as session:
+        found = _search(ctx, session).find([KETONE], ALCOHOL)
+    assert found["level"] == "E1" and found["n_exact"] == 2 and found["n_exact_by_type"] == {"journal": 1, "patent": 1}
+    # 期刊那条产率低，但仍排在前面，并且是“最好的先例”
+    assert [(p["ref"], p["doc_type"], p["yield_pct"]) for p in found["precedents"]] == [("P1", "journal", 60.0), ("P2", "patent", 95.0)]
+    assert found["best_ref"] == "P1"
+    assert found["yield"]["label"] == "文献报道 60–95%（2 个先例）"
+
+
+def test_a_step_using_two_molecules_of_one_reactant_matches_a_patent_that_writes_it_once(ctx):
+    """2X + Y → Z：逆合成引擎把两份 X 都列出来，专利数据里 X 只写一次，也认作同一反应（E1）。
+
+    保证的行为：m01_structure.py 的 reaction_key(…, distinct=True) 同一种反应物只算一次；
+    m05_precedents.py 的 find 用照写的和“每种原料只算一次”的两个编号一起查同一反应。
+    为什么重要：专利数据不写化学计量（实测先例库里只有 0.28% 的记录把同一个反应物写了两次），
+    不这样查的话，用两份原料的反应永远找不到“文献直接报道”。
+    怎么读：专利写的是“苯胺 + 光气 → 1,3-二苯基脲”（苯胺只写一次，实际要两份）；
+    这一步写成 [苯胺, 苯胺, 光气]。
+    """
+    from syntherisk.modules import m01_structure as chem
+
+    aniline, phosgene, urea = "Nc1ccccc1", "O=C(Cl)Cl", "O=C(Nc1ccccc1)Nc1ccccc1"
+    assert chem.reaction_key([aniline, aniline, phosgene], urea) != chem.reaction_key([aniline, phosgene], urea)
+    assert chem.reaction_key([aniline, aniline, phosgene], urea, distinct=True) == chem.reaction_key([aniline, phosgene], urea)
+    _seed(ctx, [(f"{aniline}.{phosgene}>>{urea}", 80.0)])
+    with ctx.session_factory() as session:
+        found = _search(ctx, session).find([aniline, aniline, phosgene], urea)
+    assert found["level"] == "E1" and found["n_exact"] == 1 and found["precedents"][0]["exact"]
+
+
 def test_similar_substrate_same_reaction_type_is_graded_by_similarity(ctx):
     """库里没有同一反应时，看同类反应的先例：底物够像是 E2，产率只借够像的那条；完全没有先例是 E4。
 

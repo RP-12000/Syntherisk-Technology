@@ -698,14 +698,19 @@ def get_step_card(analysis_id: str, route_id: str, step_index: int, svg: bool = 
 
 
 @router.get("/analyses/{analysis_id}/routes/{route_id}/steps/{step_index}/precedents")
-def get_step_precedents(analysis_id: str, route_id: str, step_index: int, principal: Principal = Depends(get_principal),
+def get_step_precedents(analysis_id: str, route_id: str, step_index: int,
+                        doc_type: str | None = Query(None, pattern="^(journal|patent|dataset)$"),
+                        principal: Principal = Depends(get_principal),
                         db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)):
     """C1 文献列表、C2 相似先例：每条先例的相似度、产率、原文链接，并标出它和这一步产物的结构差异。
 
-    需要登录。返回：
+    需要登录。查询参数 `doc_type`（可选）：`journal` 只要期刊论文，`patent` 只要专利，`dataset` 只要数据集；
+    不带就是全部。先例在后端是按文献类型分开检索的（每种类型各自最多 8 条），期刊论文排在专利前面。返回：
 
     - `step`：这一步的标题，如“第 4 步 · 格氏羧基化”
     - `evidence`：证据等级，同证据卡里的 `evidence`
+    - `groups`：按文献类型分的组（期刊论文在前），同证据卡里的 `precedent_groups`；不受 `doc_type` 影响，
+      可以拿来显示“期刊论文 2 · 专利 8”这样的切换标签
     - `precedents`：先例的数组，和证据卡里的 `precedents` 是同一批，这里另外加了结构差异。每条：
       `ref`（出处编号 `P1`、`P2`…）、`exact`（是不是同一个反应）、`same_class`（是不是同类反应；
       `false` 是做法不同的相关反应）、`compared_by`（怎么认定的：`exact` / `center` / `fingerprint`）、
@@ -727,7 +732,10 @@ def get_step_precedents(analysis_id: str, route_id: str, step_index: int, princi
     _route, card = _card(ctx, result, route_id, step_index)
     product = card["product"]["smiles"]
     items = []
-    for precedent in card["precedents"]:
+    # 只要某一种文献类型时，先把别的类型筛掉（编号 P1、P2… 不变，和证据卡、说明文字里的对得上）
+    wanted = [p for p in card["precedents"]
+              if doc_type is None or (p.get("doc_type") or "patent") == doc_type]
+    for precedent in wanted:
         # 复制一份再往里加字段，不去改存着的结果
         item = dict(precedent)
         if not precedent["exact"]:
@@ -742,7 +750,8 @@ def get_step_precedents(analysis_id: str, route_id: str, step_index: int, princi
             except ExternalServiceError:
                 item["literature"] = None
         items.append(item)
-    return {"step": card["title"], "evidence": card["evidence"], "precedents": items}
+    return {"step": card["title"], "evidence": card["evidence"], "groups": card["precedent_groups"],
+            "precedents": items}
 
 
 @router.post("/analyses/{analysis_id}/routes/{route_id}/steps/{step_index}/ask")

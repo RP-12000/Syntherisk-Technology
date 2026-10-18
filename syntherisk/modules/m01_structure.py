@@ -1665,10 +1665,14 @@ def main_fragment_key14(smiles: str) -> str | None:
     return inchikey_of(mol)[:14]
 
 
-def reaction_key(reactants: list[str], product: str) -> str | None:
+def reaction_key(reactants: list[str], product: str, *, distinct: bool = False) -> str | None:
     """同一批反应物得到同一个产物，就认为是“同一反应”。不看试剂，也不分立体异构。
 
     参数：reactants  反应物的 SMILES 列表；product  产物的 SMILES。
+          distinct   True 时同一种反应物只算一次：[X, X, Y] 和 [X, Y] 得到同一个编号。
+                     专利数据不写化学计量，用两份 X 的反应（2X + Y → Z）在记录里常常只写一次 X；
+                     M5 找“同一反应”时用这个写法再查一遍（m05_precedents.PrecedentSearch.find）。
+                     默认 False：反应物写了几次就算几次，和先例库里存的编号一致。
     返回：40 个字符的十六进制字符串（SHA-1 哈希）；有读不出来的结构时返回 None。
     算法：每个反应物取最大片段的 key14，排好序用 “.” 连起来，后面接 “>>” 和产物的 key14，对这串文字取 SHA-1。
           排序使得反应物写的先后不影响结果；取最大片段使得带不带抗衡离子不影响结果；
@@ -1683,6 +1687,9 @@ def reaction_key(reactants: list[str], product: str) -> str | None:
     product_key = main_fragment_key14(product)
     if product_key is None or any(k is None for k in keys):
         return None
+    if distinct:
+        # dict.fromkeys 去掉重复（下面反正要排序，先后无所谓）
+        keys = list(dict.fromkeys(keys))
     text = ".".join(sorted(keys)) + ">>" + product_key
     return hashlib.sha1(text.encode("ascii")).hexdigest()
 

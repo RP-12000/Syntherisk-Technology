@@ -60,7 +60,7 @@
 
 | 按钮 | 做什么 | 接口 | 模块 | 回到界面 |
 |---|---|---|---|---|
-| C1 文献列表 | 相似度、产率、原文链接 | `GET …/steps/{n}/precedents` | M5 | R6 |
+| C1 文献列表 | 相似度、产率、原文链接；期刊论文和专利分开检索，期刊在前，`?doc_type=journal` / `patent` 只取一种 | `GET …/steps/{n}/precedents` | M5 | R6 |
 | C2 相似先例 | 同上，带结构差异 | `GET …/steps/{n}/precedents`、`POST /structures/diff` | M5 + M1 | R6 |
 | C3 替代分支 | 证据卡的 `alternatives` 字段；跳回分叉点 | — | — | — |
 | C4 原料标签 | 库存、在售、价格（第一版“待询价”） | `GET /materials/availability?smiles=` | M4 | R6 浮层 |

@@ -342,7 +342,9 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
     """C1 文献列表、C2 相似先例：每条先例带原文链接；不是同一反应的先例标出它和这一步产物的结构差异。
 
     保证的行为：GET …/steps/{n}/precedents（syntherisk/api/analyses.py 的 get_step_precedents）
-      - 同一反应的先例排在前面，exact 为 true，相似度是 1.0，不带 structure_diff；
+      - 先例按文献类型分组：期刊论文那一组在前，专利在后（m05_precedents.py 的 DOC_TYPE_ORDER）；
+        组内同一反应的先例排在前面，exact 为 true，相似度是 1.0，不带 structure_diff；
+      - 返回里的 groups 按组列出各自的编号；带 doc_type 参数时只返回那一种文献；
       - 相似先例带 structure_diff（m01_structure.py 的 structure_diff）：query 一侧是这一步的产物，
         reference 一侧是先例的产物；
       - 原文链接：有 DOI 的给 doi.org 的地址；没有 DOI 的专利，专利号认得的给 Google Patents 的地址，
@@ -367,13 +369,18 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
     listing = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1/precedents", headers=account["headers"]).json()
     # 库里有反应物、产物都相同的记录，所以这一步是 E1（文献直接报道）
     assert listing["evidence"]["level"] == "E1"
-    # 列表里正好两条，解包成两个变量：同一反应的那条在前
-    exact, similar = listing["precedents"]
+    # 列表里正好两条，解包成两个变量：期刊论文那一组在前（虽然它只是相似先例），专利那一组在后
+    similar, exact = listing["precedents"]
+    assert [(g["doc_type"], g["refs"], g["n_exact"]) for g in listing["groups"]] == [("journal", ["P1"], 0), ("patent", ["P2"], 1)]
+    # 只要专利：期刊那条被筛掉，编号还是 P2（和证据卡、说明文字里的对得上）
+    patents = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1/precedents", headers=account["headers"],
+                         params={"doc_type": "patent"}).json()
+    assert [p["ref"] for p in patents["precedents"]] == ["P2"] and len(patents["groups"]) == 2
     # TEST-0001 不是专利号的写法，拼不出能打开的链接，所以不给链接（以前会给一个打不开的 Google Patents 地址）
     assert exact["exact"] and exact["similarity"] == 1.0 and exact["url"] is None
     # 同一反应的先例产物和这一步一样，没有差异可标
     assert "structure_diff" not in exact
-    # 第二条：不是同一反应；类型显示成“期刊论文”；有 DOI，所以链接是 doi.org 的地址
+    # 期刊那条：不是同一反应；类型显示成“期刊论文”；有 DOI，所以链接是 doi.org 的地址
     assert not similar["exact"] and similar["doc_type_label"] == "期刊论文" and similar["url"] == "https://doi.org/10.1000/test"
     # 先例的产物比这一步的产物多一个氯，这一步的产物没有多出来的原子
     assert similar["structure_diff"]["reference_only_fragments"] == ["Cl"] and similar["structure_diff"]["query_only_atoms"] == []

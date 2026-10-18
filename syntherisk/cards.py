@@ -49,7 +49,7 @@ from typing import Any
 
 from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
-from syntherisk.modules.m05_precedents import precedent_url
+from syntherisk.modules.m05_precedents import DOC_TYPE_LABELS, doc_type_rank, precedent_url
 from syntherisk.modules.m10_scoring import CONFIDENCE_LABELS, DIMENSIONS
 from syntherisk.reference import ReferenceData
 
@@ -247,6 +247,37 @@ def render_sentences(sentences: list[dict[str, Any]], sources: list[dict[str, An
     return i18n.join(parts, "", " ")
 
 
+def precedent_groups(precedents: list[dict[str, Any]],
+                     n_exact_by_type: dict[str, int] | None) -> list[dict[str, Any]]:
+    """把证据卡上的先例按文献类型分组：期刊论文在前、专利在后（m05_precedents.DOC_TYPE_ORDER）。
+
+    M5 是按文献类型分开检索的（每种类型各自最多列 max_precedents 条），这里把结果按类型分好组，
+    前端可以分成“期刊论文”“专利”两块显示，也可以只看其中一块（先例列表接口的 doc_type 参数）。
+    参数：
+        precedents       证据卡上的先例列表（M5 已经按“期刊在前”排好）。
+        n_exact_by_type  M5 数好的每种类型里同一反应的记录数；旧的分析结果里没有，这时按列出来的数。
+    返回：
+        [{"doc_type": "journal", "label": "期刊论文", "refs": ["P1", "P2"], "count": 2, "n_exact": 1}, …]，
+        只列有先例的类型。refs 是这一组先例的编号；n_exact 是库里这种类型的同一反应记录数（可能比列出来的多）。
+    谁在用：build_card()；api/analyses.py 的 get_step_precedents。
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for precedent in precedents:
+        groups.setdefault(precedent.get("doc_type") or "patent", []).append(precedent)
+    out = []
+    for doc_type in sorted(groups, key=doc_type_rank):
+        members = groups[doc_type]
+        listed_exact = sum(1 for p in members if p.get("exact"))
+        out.append({
+            "doc_type": doc_type,
+            "label": DOC_TYPE_LABELS.get(doc_type, doc_type),
+            "refs": [p["ref"] for p in members],
+            "count": len(members),
+            "n_exact": n_exact_by_type.get(doc_type, listed_exact) if n_exact_by_type is not None else listed_exact,
+        })
+    return out
+
+
 def build_card(
     result: dict[str, Any],
     route: dict[str, Any],
@@ -362,6 +393,9 @@ def build_card(
         # 拼不出能打开的链接时是 None。{**precedent, "url": …} 是“原字典的全部键，再把 url 换掉”的新字典
         "precedents": [{**precedent, "url": precedent_url(precedent)}
                        for precedent in evidence.get("precedents") or []],
+        # 上面的先例按文献类型分组（期刊论文在前、专利在后），前端分开显示用；见 precedent_groups()
+        "precedent_groups": precedent_groups(evidence.get("precedents") or [],
+                                             evidence.get("n_exact_by_type")),
         # ---- 反应本身
         # “反应物>试剂>产物”形式的反应 SMILES
         "reaction_smiles": reaction["reaction_smiles"],

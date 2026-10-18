@@ -125,6 +125,23 @@ DOC_TYPE_LABELS = {
     "journal": i18n.tr("期刊论文", "Journal article"),
     "dataset": i18n.tr("数据集", "Dataset"),
 }
+# 文献类型的先后：期刊论文优先于专利，数据集（比如 ORD 的高通量筛选数据）排在最后。
+# 每种类型各自检索、各自最多列 max_precedents 条，证据卡上按这个先后分组列出（见 PrecedentSearch.find）。
+# 不在这里的类型（以后新加的）排在它们后面
+DOC_TYPE_ORDER = ("journal", "patent", "dataset")
+
+
+def doc_type_rank(doc_type: str | None) -> int:
+    """文献类型在 DOC_TYPE_ORDER 里排第几（0 最优先）；没写类型的按专利算，不认识的类型排在最后。"""
+    doc_type = doc_type or "patent"
+    return DOC_TYPE_ORDER.index(doc_type) if doc_type in DOC_TYPE_ORDER else len(DOC_TYPE_ORDER)
+
+
+def _doc_type(row: models.ReactionPrecedent) -> str:
+    """一条先例的文献类型；没写的按专利算（USPTO 导入的都是专利）。"""
+    return row.doc_type or "patent"
+
+
 # 没有可用的产率时显示的文字（库是空的、没有先例、先例没报产率都用它）
 _NO_YIELD_LABEL = i18n.tr("无产率记录", "No yield on record")
 # 一个整数或小数：\d+ 是一串数字，(?:\.\d+)? 是可有可无的小数部分。parse_yield 用它从文字里取数字
@@ -359,7 +376,10 @@ class PrecedentIndex:
         product_counts  长度 N，int32。product 每一行里有多少位是 1。
         class_ids       长度 N，int32。第 i 条先例的反应中心属于哪个“同类”编号；-1 表示这条先例没有反应中心。
         core_ids        长度 N，int32。第 i 条先例的反应中心的“核心”编号；-1 同上。
+        doc_types       长度 N，int8。第 i 条先例的文献类型在 doc_type_names 里的位置（期刊论文、专利……），
+                        检索时按它让每种文献类型各自挑候选（见 PrecedentSearch.find）。
     其他属性：
+        doc_type_names  列表，doc_type_names[doc_types[i]] 是第 i 条先例的文献类型（journal / patent / dataset）。
         classes      {同类钥匙: 编号}。钥匙是一串文字，即 chem.center_class(反应中心) 返回的第一项。
         cores        {核心钥匙: 编号}。钥匙是 chem.center_class(反应中心) 返回的第二项。
         class_names  列表，class_names[编号] 是那个同类钥匙的文字（把 classes 反过来查）。
@@ -392,6 +412,9 @@ class PrecedentIndex:
         self.classes: dict[str, int] = {}
         self.cores: dict[str, int] = {}
         self.class_names: list[str] = []
+        # 文献类型：每条先例一个小整数，doc_type_names 把它换回文字
+        self.doc_types = np.zeros(0, dtype=np.int8)
+        self.doc_type_names: list[str] = []
         self.with_center = 0
 
     def refresh(self, session: Session) -> None:
@@ -427,6 +450,9 @@ class PrecedentIndex:
             # 两种编号先全部填成 -1（没有反应中心），下面读到有的再改
             class_ids = np.full(count, -1, dtype=np.int32)
             core_ids = np.full(count, -1, dtype=np.int32)
+            doc_types = np.zeros(count, dtype=np.int8)
+            # 文献类型 -> 编号，第一次见到时编下一个号。没写类型的按专利算
+            type_codes: dict[str, int] = {}
             classes: dict[str, int] = {}
             cores: dict[str, int] = {}
             # 备忘：反应中心的原文 -> (同类编号, 核心编号)。同一种反应中心在库里会出现很多次，算过一次就记住。
@@ -452,14 +478,16 @@ class PrecedentIndex:
 
             # filled：数组里已经填了多少行
             filled = 0
-            # 只取检索要用的四列，按 id 排好。.yield_per(20000) 让结果一次只取 20000 行，不把整张表一口气读进内存；
-            # 下面的 rows.partitions() 就按这个大小一批一批地给，每一批是一个行的列表，行是 (id, fp_diff, fp_product, center)
+            # 只取检索要用的五列，按 id 排好。.yield_per(20000) 让结果一次只取 20000 行，不把整张表一口气读进内存；
+            # 下面的 rows.partitions() 就按这个大小一批一批地给，每一批是一个行的列表，
+            # 行是 (id, fp_diff, fp_product, center, doc_type)
             rows = session.execute(
                 select(
                     models.ReactionPrecedent.id,
                     models.ReactionPrecedent.fp_diff,
                     models.ReactionPrecedent.fp_product,
                     models.ReactionPrecedent.center,
+                    models.ReactionPrecedent.doc_type,
                 ).order_by(models.ReactionPrecedent.id)
             ).yield_per(20000)
             for chunk in rows.partitions():
@@ -478,10 +506,13 @@ class PrecedentIndex:
                 pairs = [known.get(row[3]) or center_ids(row[3]) for row in good]
                 class_ids[filled:filled + size] = [pair[0] for pair in pairs]
                 core_ids[filled:filled + size] = [pair[1] for pair in pairs]
+                doc_types[filled:filled + size] = [type_codes.setdefault(row[4] or "patent", len(type_codes))
+                                                   for row in good]
                 filled += size
             # 有行被跳过时 filled 比 count 小：把数组截到实际填了的长度，再换到对象上
             self.ids, self.diff, self.product = ids[:filled], diff[:filled], product[:filled]
             self.class_ids, self.core_ids, self.classes, self.cores = class_ids[:filled], core_ids[:filled], classes, cores
+            self.doc_types, self.doc_type_names = doc_types[:filled], list(type_codes)
             # 字典保持插入的先后，而编号正是按插入的先后给的，所以 list(classes) 的第 n 项就是编号 n 的钥匙
             self.class_names = list(classes)
             # (数组 >= 0) 得到一个布尔数组，.sum() 数其中有多少个 True
@@ -588,8 +619,11 @@ class PrecedentSearch:
             label             等级的名字：文献直接报道 / 高相似先例 / 低相似先例 / 仅模型预测
             stars             星数 3 / 2 / 1 / 0；没评估是 None
             literature_score  “文献依据”这一维的分数（0–100，一位小数）；没评估是 None
-            precedents        先例列表，最多 max_precedents 条（现在是 8），同一反应的排最前。每一项的键见 _to_dict()
+            precedents        先例列表，按文献类型分组：期刊论文在前、专利在后（DOC_TYPE_ORDER），每种类型各自最多
+                              max_precedents 条（现在是 8），组内同一反应的排最前。每一项的键见 _to_dict()
             n_exact           库里“同一反应”的先例有几条（去重以后的数；可能比列出来的多）
+            n_exact_by_type   上一项按文献类型分开数，如 {"journal": 1, "patent": 4}
+            best_ref          借用试剂和条件文字时用的那条先例的编号（期刊优先，见 _best_ref）；没有先例是 None
             best_similarity   E1 时是 1.0；否则是同类反应先例里最高的底物相似度（三位小数）；没有同类先例是 None
             compared_by       这一步是怎么判断“同类反应”的："center" 按反应中心，"fingerprint" 按指纹；没评估是 None
             yield             文献报道的产率，见 _yield_info()。流水线把它从字典里拿出去，另存为 reaction["yield"]
@@ -622,9 +656,12 @@ class PrecedentSearch:
 
         # 证据卡里最多列几条先例
         limit = int(self.config.get("max_precedents", 8))
-        # 第一路：同一反应。reaction_key 由反应物和产物算出来；有结构读不出来时是 None，这一路就跳过
-        key = chem.reaction_key(reactants, product)
-        exact_rows = self._exact_rows(key) if key else []
+        # 第一路：同一反应。reaction_key 由反应物和产物算出来；有结构读不出来时是 None，这一路就跳过。
+        # 专利数据不写“用了几份”：同一种原料用两份的反应（2X + Y → Z）常常只写一次 X，
+        # 而逆合成引擎会把两份都列出来。所以再按“每种原料只算一次”算一个编号，两个都查
+        keys = [key for key in dict.fromkeys([chem.reaction_key(reactants, product),
+                                               chem.reaction_key(reactants, product, distinct=True)]) if key]
+        exact_rows = self._exact_rows(keys) if keys else []
         # 产物比反应物多出一大块（反应物没给全）时，按指纹就比不准“反应类型”了：不找相似先例，免得硬凑出一个等级
         unaccounted = self._unaccounted_atoms(reactants, product)
         balanced = unaccounted <= int(self.config.get("max_unaccounted_atoms", 4))
@@ -634,13 +671,13 @@ class PrecedentSearch:
         unverified: set[int] = set()
         if by_center:
             # 第二路：按反应中心。similar 里每一项是 (先例行, 底物相似度, 反应一致程度, 是否同类反应)
-            similar = self._class_rows(center, product, exclude_key=key, limit=limit)
+            similar = self._class_rows(center, product, exclude_keys=keys, limit=limit)
             # np.nonzero(条件)[0] 给出满足条件的位置。这里是库里没有反应中心的那些先例在数组里的位置
             unmapped = np.nonzero(self.index.class_ids < 0)[0]
             if balanced and len(unmapped):
                 # 库里没带映射的先例只能按指纹比。指纹分不清“产物相近、成的键不同”的反应，
                 # 所以它们再像也只当旁证（相关反应），不拿来把这一步定成同类反应
-                loose = self._similar_rows(reactants, product, exclude_key=key, limit=limit, pool=unmapped)
+                loose = self._similar_rows(reactants, product, exclude_keys=keys, limit=limit, pool=unmapped)
                 # “row, *_” 的意思是只要元组的第一项（先例行），其余几项不管
                 unverified = {row.id for row, *_ in loose}
                 # 把第四项（是否同类反应）一律换成 False 再并进来，然后整体重新排序
@@ -648,19 +685,28 @@ class PrecedentSearch:
                 similar.sort(key=self._rank)
         else:
             # 第三路：整步按指纹比。反应物没给全时干脆不找
-            similar = self._similar_rows(reactants, product, exclude_key=key, limit=limit) if balanced else []
+            similar = (self._similar_rows(reactants, product, exclude_keys=keys, limit=limit)
+                       if balanced else [])
 
-        # 拼先例列表：同一反应的在前（两种相似度都记 1.0），相似先例在后，总共不超过 limit 条
+        # 拼先例列表：按文献类型分组，期刊论文在前、专利在后（DOC_TYPE_ORDER）。每种类型各自最多 limit 条：
+        # 先是这种类型里同一反应的记录（两种相似度都记 1.0），再是相似先例。上面的检索也是每种类型各自挑候选的，
+        # 所以专利再多也挤不掉期刊。库里只有专利时，结果和不分组完全一样
+        present = {_doc_type(row) for row in exact_rows} | {_doc_type(row) for row, *_ in similar}
         precedents: list[dict[str, Any]] = []
-        for row in exact_rows[:limit]:
-            precedents.append(self._to_dict(row, similarity=1.0, class_similarity=1.0, exact=True, compared_by="exact"))
-        for row, substrate_similarity, class_similarity, same_class in similar:
-            if len(precedents) >= limit:
-                break
-            precedents.append(self._to_dict(
-                row, similarity=substrate_similarity, class_similarity=class_similarity, exact=False, same_class=same_class,
-                compared_by="center" if by_center and row.id not in unverified else "fingerprint",
-            ))
+        for doc_type in sorted(present, key=doc_type_rank):
+            group: list[dict[str, Any]] = []
+            for row in exact_rows:
+                if _doc_type(row) == doc_type and len(group) < limit:
+                    group.append(self._to_dict(row, similarity=1.0, class_similarity=1.0, exact=True,
+                                               compared_by="exact"))
+            for row, substrate_similarity, class_similarity, same_class in similar:
+                if _doc_type(row) == doc_type and len(group) < limit:
+                    group.append(self._to_dict(
+                        row, similarity=substrate_similarity, class_similarity=class_similarity, exact=False,
+                        same_class=same_class,
+                        compared_by="center" if by_center and row.id not in unverified else "fingerprint",
+                    ))
+            precedents += group
         # 按列出来的顺序编号 P1、P2……说明文字、产率统计、借用的试剂都用这个编号指回先例
         for number, precedent in enumerate(precedents, 1):
             precedent["ref"] = f"P{number}"
@@ -674,6 +720,10 @@ class PrecedentSearch:
         # 找到的是不是全都是没带映射、没法确认的先例（只影响说明文字）
         only_unverified = bool(similar) and all(row.id in unverified for row, *_ in similar)
         level, score, basis = self._grade(n_exact, best, model_probability, related, only_unverified)
+        # 每种文献类型里各有几条同一反应的记录（库里查到的全部，不只是列出来的）
+        n_exact_by_type: dict[str, int] = {}
+        for row in exact_rows:
+            n_exact_by_type[_doc_type(row)] = n_exact_by_type.get(_doc_type(row), 0) + 1
         if not balanced and not by_center and not n_exact:
             # 按指纹比、反应物又没给全、也没有同一反应的记录：等级是 E4，但要把原因说清楚
             basis = i18n.tr("反应物没有给全（产物多出 {n} 个原子），没法按反应类型找相似先例",
@@ -689,6 +739,10 @@ class PrecedentSearch:
             "literature_score": round(score, 1),
             "precedents": precedents,
             "n_exact": n_exact,
+            # 每种文献类型里各有几条同一反应的记录，如 {"journal": 1, "patent": 4}
+            "n_exact_by_type": n_exact_by_type,
+            # 借用试剂和条件文字时用的那条先例的编号（期刊优先，见 _best_ref）；没有先例是 None
+            "best_ref": self._best_ref(precedents),
             "best_similarity": 1.0 if n_exact else (round(float(best), 3) if best is not None else None),
             "compared_by": "center" if by_center else "fingerprint",  # 这一步是按反应中心还是按指纹判断“同类反应”的
             # 同一反应的产率要用库里查到的全部记录来统计，不能只用列在卡上的那几条：
@@ -699,16 +753,17 @@ class PrecedentSearch:
 
     # ------------------------------------------------------------ 检索
 
-    def _exact_rows(self, key: str) -> list[models.ReactionPrecedent]:
-        """库里和这一步是“同一反应”的先例：反应物和产物都一样（reaction_key 相同）。
+    def _exact_rows(self, keys: list[str]) -> list[models.ReactionPrecedent]:
+        """库里和这一步是“同一反应”的先例：反应物和产物都一样（reaction_key 是 keys 之一）。
 
         参数：
-            key  这一步的反应编号（chem.reaction_key 的结果）。它不看试剂，也不分立体异构。
+            keys  这一步的反应编号（chem.reaction_key 的结果），一个或两个：照写的和“每种原料只算一次”的，
+                  见 find()。编号不看试剂，也不分立体异构。
         返回：
-            ReactionPrecedent 列表：有产率的排前面，产率高的在前，产率一样时年份新的在前；
-            同一篇文献里重复记录的同一个反应只留一条。没有就是空列表。
+            ReactionPrecedent 列表：期刊论文在前、专利在后（DOC_TYPE_ORDER）；同一种类型里有产率的排前面，
+            产率高的在前，产率一样时年份新的在前；同一篇文献里重复记录的同一个反应只留一条。没有就是空列表。
         副作用：
-            查一次数据库（reaction_key 列上有索引），最多取 200 行。
+            查一次数据库（reaction_key 列上有索引），最多取 200 行；期刊论文先取，不会因为专利太多被截掉。
         谁在用：
             本类的 find()。
         """
@@ -716,14 +771,20 @@ class PrecedentSearch:
         # .limit(200) 是上限：同一个反应的记录再多也只看 200 条
         rows = list(
             self.session.scalars(
-                select(models.ReactionPrecedent).where(models.ReactionPrecedent.reaction_key == key).limit(200)
+                select(models.ReactionPrecedent)
+                .where(models.ReactionPrecedent.reaction_key.in_(keys))
+                # 期刊论文排在前面再截 200 条（doc_type != "journal" 对期刊是 False，排在 True 前面）
+                .order_by(models.ReactionPrecedent.doc_type != "journal")
+                .limit(200)
             )
         )
-        # 排序的键是三项的元组，Python 从左到右依次比较：
+        # 排序的键是四项的元组，Python 从左到右依次比较：
+        #   doc_type_rank         文献类型的先后：期刊论文 0，专利 1，数据集 2
         #   r.yield_pct is None   有产率的是 False，排在没有产率的（True）前面
         #   -(产率)               加负号让大的排前面；没有产率的按 0 算
         #   -(年份)               同理，新的排前面；没有年份的按 0 算
-        rows.sort(key=lambda r: (r.yield_pct is None, -(r.yield_pct or 0), -(r.year or 0)))
+        rows.sort(key=lambda r: (doc_type_rank(r.doc_type), r.yield_pct is None, -(r.yield_pct or 0),
+                                 -(r.year or 0)))
         return self._dedupe(rows)
 
     @staticmethod
@@ -740,7 +801,49 @@ class PrecedentSearch:
         """
         return (not item[3], -item[1], -item[2], item[0].id)
 
-    def _class_rows(self, center: str, product: str, *, exclude_key, limit):
+    def _per_type(self, ranked: np.ndarray, positions: np.ndarray, take: int) -> np.ndarray:
+        """从排好序的候选里，每种文献类型各留前 take 个。这就是“期刊、专利分开检索”：各自有自己的名额。
+
+        参数：
+            ranked     候选在 positions 里的下标，已经按优先的先后排好（底物最像的在前）。
+            positions  候选在整个索引里的位置（用来查每条候选的文献类型 index.doc_types）。
+            take       每种类型最多留几个。
+        返回：
+            留下的下标（numpy 数组），仍按 ranked 原来的先后。库里只有一种文献类型时，就是 ranked 的前 take 个。
+        谁在用：
+            _class_rows()、_similar_rows()。
+        """
+        if not len(ranked):
+            return ranked
+        codes = self.index.doc_types[positions[ranked]]
+        keep = np.zeros(len(ranked), dtype=bool)
+        for code in np.unique(codes):
+            # 这种类型的候选在 ranked 里的位置（从前往后），只留前 take 个
+            keep[np.nonzero(codes == code)[0][:take]] = True
+        return ranked[keep]
+
+    def _best_ref(self, precedents: list[dict[str, Any]]) -> str | None:
+        """借用试剂和条件文字时用哪一条先例，返回它的编号（P1……）。期刊论文优先：
+
+            1. 有同一反应的记录：用排在最前的那条。列表里期刊在前，所以有期刊就用期刊（同一类型里产率高的在前）；
+            2. 没有同一反应：同类反应、底物相似度够得上 E2（high_similarity_threshold）的先例里，期刊优先；
+            3. 都不够：用最相关的那条（同类反应优先，底物越像越前），和分组以前的做法一样。
+        先例列表是空的返回 None。只有 E1、E2 的步骤会真的借用（见 pipeline.py 的 _adopt_precedent_reagents）。
+        谁在用：find()。
+        """
+        if not precedents:
+            return None
+        exact = [p for p in precedents if p["exact"]]
+        if exact:
+            return exact[0]["ref"]
+        high = float(self.config["high_similarity_threshold"])
+        strong = [p for p in precedents if p["same_class"] and p["similarity"] >= high]
+        if strong:
+            return strong[0]["ref"]
+        most_relevant = min(precedents, key=lambda p: (not p["same_class"], -p["similarity"], -p["class_similarity"]))
+        return most_relevant["ref"]
+
+    def _class_rows(self, center: str, product: str, *, exclude_keys, limit):
         """按反应中心找相似先例。返回 [(行, 底物相似度, 反应一致程度, 是否同类反应)]，同类的排在前面。
 
         反应中心（归并以后）和这一步一模一样的先例才算“同类反应”；成的键一样、掉下去的基团不一样的
@@ -750,9 +853,10 @@ class PrecedentSearch:
         参数：
             center       这一步的反应中心（原样的文字，没有归并过）。
             product      这一步的产物 SMILES。
-            exclude_key  这一步自己的反应编号：反应物、产物都一样的先例已经算作“同一反应”，这里不再重复列。
-            limit        证据卡最多列几条。这里会多挑几倍的候选（同类挑 limit × 6 条，相关挑 limit × 3 条），
-                         因为后面去重、去掉同一反应以后会少一些。
+            exclude_keys  这一步自己的反应编号（一个或两个，见 find）：反应物、产物都一样的先例已经算作“同一反应”，
+                          这里不再重复列。
+            limit         证据卡每种文献类型最多列几条。这里会多挑几倍的候选（同类挑 limit × 6 条，相关挑 limit × 3 条，
+                          期刊、专利各自这么多），因为后面去重、去掉同一反应以后会少一些。
         返回：
             见第一行。相似度和一致程度都在 0 到 1 之间；已经按 _rank 排好。一条都没有时返回空列表。
         步骤：
@@ -790,7 +894,9 @@ class PrecedentSearch:
             keep = np.nonzero(substrate >= low)[0]
             # np.argsort(-相似度) 给出从高到低的次序；kind="stable" 让一样高的保持原来的先后，每次结果相同。
             # 后面的切片只留前若干个。i 是在 candidates 里的下标，candidates[i] 才是在整个索引里的位置
-            for i in keep[np.argsort(-substrate[keep], kind="stable")][: limit * (6 if same else 3)]:
+            ranked = keep[np.argsort(-substrate[keep], kind="stable")]
+            # 每种文献类型各留最像的若干条：期刊、专利分开挑，专利再多也挤不掉期刊
+            for i in self._per_type(ranked, candidates, limit * (6 if same else 3)):
                 picked[int(index.ids[candidates[i]])] = (float(substrate[i]), int(index.class_ids[candidates[i]]))
         if not picked:
             return []
@@ -800,7 +906,7 @@ class PrecedentSearch:
         # 按 id 把候选先例的整行取出来。.in_(列表) 就是 SQL 的 IN (...)，这里最多几十个 id
         rows = self.session.scalars(select(models.ReactionPrecedent).where(models.ReactionPrecedent.id.in_(list(picked))))
         found = []
-        for row in self._dedupe([r for r in rows if r.reaction_key != exclude_key]):
+        for row in self._dedupe([r for r in rows if r.reaction_key not in exclude_keys]):
             substrate, their_class = picked[row.id]
             theirs = set(index.class_names[their_class].split("|"))
             # 反应一致程度 = 两边共有的变化项数 ÷ 两边合起来的变化项数。同类反应两边完全一样，是 1；相关反应小于 1
@@ -808,7 +914,7 @@ class PrecedentSearch:
         found.sort(key=self._rank)
         return found
 
-    def _similar_rows(self, reactants, product, *, exclude_key, limit, pool=None):
+    def _similar_rows(self, reactants, product, *, exclude_keys, limit, pool=None):
         """按指纹找相似先例，分两步。返回值同 _class_rows。pool 给了的话，只在这些行里找。
 
         第一步粗筛：反应类别指纹（折叠成位）够像，产物也够像。快，但会放进来
@@ -819,8 +925,9 @@ class PrecedentSearch:
         参数：
             reactants    这一步的反应物 SMILES 列表。
             product      这一步的产物 SMILES。
-            exclude_key  这一步自己的反应编号；同一反应的先例不在这里重复列。
-            limit        证据卡最多列几条。粗筛时类别最像的一档挑 limit × 6 条、次一档挑 limit × 3 条去细比。
+            exclude_keys  这一步自己的反应编号（一个或两个，见 find）；同一反应的先例不在这里重复列。
+            limit         证据卡每种文献类型最多列几条。粗筛时类别最像的一档挑 limit × 6 条、次一档挑 limit × 3 条去细比，
+                          期刊、专利各自这么多。
             pool         None：在整个库里找。给一个位置数组（numpy）：只在索引的这些位置上找——
                          find() 用它只查库里没带反应中心的那部分先例。
         返回：
@@ -865,7 +972,10 @@ class PrecedentSearch:
             # 这一档里再看产物像不像：低于 low_similarity_threshold 的不要，从高到低留下前 take 条
             substrate = chem.tanimoto_many(query_product, products[candidates], product_counts[candidates])
             keep = np.nonzero(substrate >= float(config["low_similarity_threshold"]))[0]
-            for i in keep[np.argsort(-substrate[keep], kind="stable")][:take]:
+            ranked = keep[np.argsort(-substrate[keep], kind="stable")]
+            # candidates 是在 rows_in 范围里的位置；换成在整个索引里的位置，才查得到每条的文献类型
+            positions = candidates if pool is None else pool[candidates]
+            for i in self._per_type(ranked, positions, take):
                 picked[int(ids[candidates[i]])] = float(substrate[i])
         if not picked:
             return []
@@ -874,7 +984,7 @@ class PrecedentSearch:
         strict, related = float(config.get("class_match_strict", 0.65)), float(config.get("class_match_related", 0.45))
         found = []
         # 第二步细比：对筛出来的每一条，用它存着的反应 SMILES 现算一遍“各种原子类型增减了几个”，和这一步的数着个数比
-        for row in self._dedupe([r for r in rows if r.reaction_key != exclude_key]):
+        for row in self._dedupe([r for r in rows if r.reaction_key not in exclude_keys]):
             # 库里存的格式是 “反应物>试剂>产物”，反应物之间用 “.” 隔开
             their_reactants, _, their_product = row.reaction_smiles.split(">")
             their_delta = chem.environment_delta(their_reactants.split("."), [their_product])
