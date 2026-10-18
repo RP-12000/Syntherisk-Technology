@@ -56,21 +56,31 @@
         Claude 的调用层：请求的写法、跳过思考块读结果、拒答和截断变成对应的错误
     test_openai_compatible_provider_speaks_chat_completions
         兼容 OpenAI 的调用层：请求的写法、两种 JSON 模式、各种出错的回复都变成 LLMError
+    test_english_requests_ask_the_model_to_write_in_english
+        要英文时：系统提示词是英文版，发给模型的事实里没有汉字，结果里的 lang 是 en
+    test_chinese_requests_are_sent_exactly_as_before
+        要中文时：提示词和事实同以前一字不差，结果里的 lang 是 zh
+    test_fallback_notes_have_english
+        退回模板时 note 里的原因（连同调用层的错误说明）有英文
 """
 
 import json
+import re
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from syntherisk.cards import build_card, find_route
+from syntherisk import i18n
+from syntherisk.cards import build_card, card_facts, find_route
 from syntherisk.llm import LLMError, LLMRefusal, LLMResponse, LLMService
 from syntherisk.llm.anthropic_provider import AnthropicProvider
 from syntherisk.llm.openai_compatible import OpenAICompatibleProvider
 from syntherisk.modules.m02_constraints import ConstraintParser
-from syntherisk.modules.m11_explain import Explainer, validate_sentences
-from syntherisk.modules.m12_qa import NO_EVIDENCE, QuestionAnswerer
+from syntherisk.modules.m11_explain import (
+    ROUTE_SYSTEM_PROMPT_EN, STEP_SYSTEM_PROMPT, STEP_SYSTEM_PROMPT_EN, Explainer, validate_sentences,
+)
+from syntherisk.modules.m12_qa import NO_EVIDENCE, QA_SYSTEM_PROMPT, QA_SYSTEM_PROMPT_EN, QuestionAnswerer
 from tests.conftest import start_analysis
 
 
@@ -194,6 +204,20 @@ def test_llm_tags_outside_the_vocabulary_are_reported_as_unsupported(ctx):
     assert parsed["unsupported"] == ["要好闻", "不用钚", "不用独角兽粉"]
     assert "tin（有机锡试剂）" in provider.requests[0]["system"]  # 词表写进了提示词
 
+    # 模型没有按格式给的情况：tags 里混进了一句话，有一个标签的 kind 是列表，unsupported 给成了一个字符串。
+    # 都不报错：不是标签的、认不出的归到“不支持”，合格的标签照样留下
+    sloppy = FakeProvider({
+        "tags": [
+            "不要用钯催化剂",
+            {"kind": ["exclude_reagent_class"], "value": "tin", "source_text": "不用锡"},
+            {"kind": "exclude_condition", "value": "cryogenic", "hardness": "soft", "source_text": "最好不要低温"},
+        ],
+        "unsupported": "要好闻",
+    })
+    loose = ConstraintParser(ctx.reference, LLMService(sloppy)).parse("……")
+    assert [t["label"] for t in loose["tags"]] == ["尽量避免：低温"]
+    assert loose["unsupported"] == ["要好闻", "不要用钯催化剂", "不用锡"]
+
     # 调用失败的情况：FakeProvider 的回答是一个异常对象，被调用时抛出来
     failing = ConstraintParser(ctx.reference, LLMService(FakeProvider(LLMError("超时"))))
     fallback = failing.parse("不要用钯催化剂")
@@ -281,6 +305,10 @@ def test_sentences_without_valid_sources_or_with_invented_numbers_are_dropped():
     assert kept[1]["sources"] == ["P1"]
     # 模型返回的不是句子列表（这里是一个字符串）：当作一句都没有，也没有丢掉的
     assert validate_sentences("不是列表", {"SCORE"}, facts) == ([], 0)
+    # 形状不对的句子：sources 是一个数字、sources 里套着字典、这一项干脆不是字典。三句都丢掉，不报错
+    # （厂商不按 JSON Schema 约束输出时，这几种都可能出现）
+    odd = [{"text": "综合得分 78 分", "sources": 3}, {"text": "综合得分 78 分", "sources": [{"id": "SCORE"}]}, "一句话"]
+    assert validate_sentences(odd, {"SCORE"}, facts) == ([], 3)
 
 
 def test_llm_explanation_is_kept_only_where_it_cites_the_card(card):
@@ -490,6 +518,10 @@ def test_anthropic_provider_requests_structured_output_and_reads_past_thinking_b
     with pytest.raises(LLMError, match="截断"):
         AnthropicProvider(model="claude-haiku-5-5", client=FakeAnthropicClient(_anthropic_response("max_tokens"))).complete_json(
             system="s", user="u", schema=schema, schema_name="demo")
+    # 文本是合法的 JSON，但不是一个对象（这里是列表）→ LLMError。业务模块都按字典来读回答
+    with pytest.raises(LLMError, match="不是对象"):
+        AnthropicProvider(model="claude-haiku-5-5", client=FakeAnthropicClient(_anthropic_response(text="[1, 2]"))).complete_json(
+            system="s", user="u", schema=schema, schema_name="demo")
 
 
 def test_openai_compatible_provider_speaks_chat_completions():
@@ -564,3 +596,117 @@ def test_openai_compatible_provider_speaks_chat_completions():
                                        transport=httpx.MockTransport(lambda _r, p=payload: httpx.Response(200, json=p)))
         with pytest.raises(LLMError, match=message):
             odd.complete_json(system="s", user="u", schema=schema, schema_name="tags")
+
+
+# ---------------------------------------------------------------- 中英文（M11 / M12）
+
+# 找汉字用的正则表达式：[一-鿿] 是常用汉字所在的那一段编码。下面用它检查“发给模型的内容里没有汉字”
+_HAN = re.compile(r"[一-鿿]")
+
+
+def test_english_requests_ask_the_model_to_write_in_english(client, account, ctx):
+    """要英文时，大模型直接用英文写：系统提示词换成英文版，发过去的事实先换成英文，结果里标明 lang 是 en。
+
+    保证的行为（syntherisk/modules/m11_explain.py 的 Explainer、syntherisk/modules/m12_qa.py 的 QuestionAnswerer）：
+      - 用哪种语言写，看 syntherisk/i18n.py 的 current_lang()：流水线里是提交分析时界面的语言，
+        接口里是这次请求的语言（?lang=en）；
+      - 是英文时，系统提示词用英文版（STEP_SYSTEM_PROMPT_EN、ROUTE_SYSTEM_PROMPT_EN、QA_SYSTEM_PROMPT_EN），
+        里面要求模型用英文写；发给模型的事实先经过 i18n.localize(facts, "en")，把有对照的中文
+        （名称、标签、依据）换成英文，所以用户消息里没有汉字；
+      - 返回值里的 lang 是 "en"，表示这段话是用英文写的；核对句子的规矩（出处、数字）不变。
+    怎么读：先跑一次布洛芬的分析，从数据库里取出结果。然后用 with i18n.collecting({}, "en") 模拟一个要英文的请求：
+    i18n.add_memory(result["_en"]) 把这次分析存下的“中文 → 英文”对照接进来（接口里是 api/deps.py 做的），
+    证据卡也在这个 with 里面拼，这样拼卡时新写的句子同样有英文。FakeProvider 依次回答三次：
+    一步的说明、整条路线的推荐理由、一个问题。最后回头看这三次各发了什么。
+    """
+    analysis = start_analysis(client, account)
+    with ctx.session_factory() as session:
+        from syntherisk import models
+
+        result = session.get(models.Analysis, analysis["id"]).result
+    route = find_route(result, "r1")
+    provider = FakeProvider(
+        {"sentences": [{"text": "This step is a Grignard carboxylation", "sources": ["ROUTE"]}]},
+        {"sentences": [{"text": "The route is feasible", "sources": ["SCORE"]}]},
+        {"answerable": True, "sentences": [{"text": "It needs anhydrous, air-free handling", "sources": ["RULE:anhydrous_organometallic"]}]},
+    )
+    with i18n.collecting({}, "en"):
+        i18n.add_memory(result.setdefault("_en", {}))
+        card = build_card(result, route, 4, ctx.reference)
+        step = Explainer(LLMService(provider)).explain_step(card)
+        summary = Explainer(LLMService(provider)).explain_route(route)
+        answer = QuestionAnswerer(LLMService(provider)).answer(card, "What should I watch out for?")
+
+    # 三段都是大模型写的，都标着英文
+    assert [(r["generated_by"], r["lang"]) for r in (step, summary, answer)] == [("llm", "en")] * 3
+    assert answer["answerable"] and answer["sentences"][0]["text"] == "It needs anhydrous, air-free handling"
+    # 三次用的分别是三段英文提示词，每一段都写明了要用英文，而且整段没有汉字
+    assert [r["system"] for r in provider.requests] == [STEP_SYSTEM_PROMPT_EN, ROUTE_SYSTEM_PROMPT_EN, QA_SYSTEM_PROMPT_EN]
+    for request in provider.requests:
+        assert "in English" in request["system"] and not _HAN.search(request["system"])
+        # 发过去的事实里也没有汉字：名称、标签、依据都换成了英文
+        assert not _HAN.search(request["user"]), _HAN.findall(request["user"])
+    # 换成英文的只是文字，结构没有变：来源编号、分数还在原来的位置
+    sent = json.loads(provider.requests[0]["user"])
+    assert "RULE:anhydrous_organometallic" in sent["allowed_sources"] and sent["score"] == card["score"]
+    assert json.loads(provider.requests[2]["user"])["question"] == "What should I watch out for?"
+
+
+def test_chinese_requests_are_sent_exactly_as_before(card):
+    """要中文（或者没有说要哪种语言）时，发给大模型的提示词和事实同以前一字不差，结果里的 lang 是 zh。
+
+    保证的行为：m11_explain.py、m12_qa.py 只在 current_lang() 是 "en" 时才换提示词、换事实里的文字；
+    其余情况发的是中文提示词（STEP_SYSTEM_PROMPT、QA_SYSTEM_PROMPT），用户消息就是 card_facts(card) 转成的 JSON 文本。
+    怎么读：同样的调用做两遍：一遍什么都不包（测试直接调函数，相当于没有请求），一遍包在
+    with i18n.collecting({}, "zh") 里（一个要中文的请求）。两遍发出去的内容都要和原来的一样。
+    """
+    step_answer = {"sentences": [{"text": "这一步用格氏试剂和二氧化碳反应得到布洛芬", "sources": ["ROUTE"]}]}
+    qa_answer = {"answerable": True, "sentences": [{"text": "需要无水无氧操作", "sources": ["RULE:anhydrous_organometallic"]}]}
+    facts = card_facts(card)
+
+    def run():
+        """调一次写说明、一次问答，返回 (假模型, 说明, 回答)。"""
+        provider = FakeProvider(step_answer, qa_answer)
+        explanation = Explainer(LLMService(provider)).explain_step(card)
+        answer = QuestionAnswerer(LLMService(provider)).answer(card, "操作上要注意什么？")
+        return provider, explanation, answer
+
+    plain = run()
+    with i18n.collecting({}, "zh"):
+        inside = run()
+    for provider, explanation, answer in (plain, inside):
+        assert provider.requests[0]["system"] == STEP_SYSTEM_PROMPT and "用中文写" in STEP_SYSTEM_PROMPT
+        # 用户消息就是精简版证据卡的 JSON 文本，里面的中文原样
+        assert provider.requests[0]["user"] == json.dumps(facts, ensure_ascii=False)
+        assert provider.requests[1]["system"] == QA_SYSTEM_PROMPT
+        assert provider.requests[1]["user"] == json.dumps({"card": facts, "question": "操作上要注意什么？"}, ensure_ascii=False)
+        assert explanation["lang"] == "zh" and answer["lang"] == "zh"
+        assert explanation["text"] == "这一步用格氏试剂和二氧化碳反应得到布洛芬[路线]。"
+
+
+def test_fallback_notes_have_english(card):
+    """退回模板时 note 里写的原因有英文，连同调用层报的错误说明一起。
+
+    保证的行为：m11_explain.py、m12_qa.py 的 note 和 syntherisk/llm/ 下各处的错误说明都是用 i18n.tr 写的：
+    存下来的仍然是中文，要英文的请求在返回前由 i18n.localize() 换成英文。
+    怎么读：在一个要英文的请求里（with i18n.collecting({}, "en")）试两种退回模板的情况：
+    没有配置大模型；配了 Claude，但模型拒答（用上面的 FakeAnthropicClient 造一个拒答的响应）。
+    note 本身是中文，i18n.localize() 以后是没有汉字的英文。
+    """
+    refusing = AnthropicProvider(model="claude-haiku-5-5", client=FakeAnthropicClient(_anthropic_response("refusal")))
+    with i18n.collecting({}, "en"):
+        offline = Explainer(LLMService(None)).explain_step(card)
+        refused = Explainer(LLMService(refusing)).explain_step(card)
+        unanswered = QuestionAnswerer(LLMService(refusing)).answer(card, "机理是什么？")
+        notes = [offline["note"], refused["note"], unanswered["note"]]
+        english = i18n.localize(notes)
+        no_evidence = i18n.localize(unanswered["answer"])
+    # 存的是中文，和以前一样
+    assert notes[0] == "未配置大模型，按模板生成"
+    assert notes[1] == "大模型没有调通（模型出于安全策略没有回答），改用模板"
+    assert all(r["generated_by"] == "template" for r in (offline, refused, unanswered))
+    # 换成英文以后没有汉字；拒答的原因也在英文那句里
+    assert not any(_HAN.search(note) for note in english), english
+    assert "declined to answer" in english[1] and "declined to answer" in english[2]
+    # 模板答不了“机理是什么”，回答是固定的那一句，它也有英文
+    assert unanswered["answer"] == NO_EVIDENCE and not _HAN.search(no_evidence)

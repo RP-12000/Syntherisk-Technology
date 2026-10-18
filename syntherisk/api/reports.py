@@ -72,7 +72,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.api import schemas
 from syntherisk.api.deps import (
     Principal, get_ctx, get_db, get_principal, load_analysis, load_finished_analysis, load_scored_analysis,
@@ -196,7 +196,9 @@ def _weighted_result(ctx: AppContext, analysis: models.Analysis, weights: dict[s
     # set(weights) 取的是字典的键，两个集合相减得到“不认识的键”
     unknown = set(weights) - set(DIMENSIONS)
     if unknown or any(value < 0 for value in weights.values()) or sum(weights.values()) <= 0:
-        raise HTTPException(422, f"权重只能包含这几项，且不能为负：{'、'.join(DIMENSIONS)}")
+        raise HTTPException(422, i18n.tr("权重只能包含这几项，且不能为负：{dims}",
+                                         "Weights may only contain these keys, none negative: {dims}",
+                                         dims=i18n.join(DIMENSIONS)))
     # 深拷贝：重新评分会直接改写传进去的字典，在副本上做才不会动到存着的结果
     result = copy.deepcopy(analysis.result)
     effective = merge_constraints(Constraints.model_validate(analysis.constraints), ctx.reference)
@@ -236,7 +238,7 @@ def compare(analysis_id: str, body: schemas.CompareRequest, principal: Principal
     # M10 整理出对比表的数据：每条路线一行指标，并标出哪些步骤是这几条路线共有的（D5）
     comparison = compare_routes(result, body.route_ids, ctx.reference.scoring)
     if not comparison["routes"]:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有找到要对比的路线")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有找到要对比的路线", "None of the routes to compare were found"))
     comparison["weights"] = result.get("weights")
     # 按路线分从高到低排：键取负数，sort 从小到大排，分高的就在前面；分数是 None 的当 0
     comparison["routes"].sort(key=lambda r: -(r["score"] or 0))
@@ -261,7 +263,7 @@ def export_comparison(analysis_id: str, body: schemas.CompareExportRequest, prin
     result = _weighted_result(ctx, analysis, body.weights)
     comparison = compare_routes(result, body.route_ids, ctx.reference.scoring)
     if not comparison["routes"]:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有找到要对比的路线")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有找到要对比的路线", "None of the routes to compare were found"))
     # “权重”那张表里写哪组权重：结果里记着的那一组（重算过的就是新权重）；结果里没有时用配置里的默认权重
     weights = result.get("weights") or ctx.reference.scoring["weights"]
     # M13 生成文件内容（字节）：xlsx 用 openpyxl，csv 用标准库
@@ -299,7 +301,7 @@ def create_report(analysis_id: str, body: schemas.ReportCreate, principal: Princ
     result = analysis.result
     route = find_route(result, body.route_id)
     if route is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这条路线")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这条路线", "Route not found"))
     # 规模档位（mg / 百 mg / g）在提交分析时的约束里，报告的物料清单按它折算
     constraints = Constraints.model_validate(analysis.constraints)
 
@@ -345,7 +347,7 @@ def download_report(report_id: str, principal: Principal = Depends(get_principal
     """
     report = db.get(models.Report, report_id)
     if report is None or report.org_id != principal.org_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这份报告")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这份报告", "Report not found"))
     # load_file 按存储名读出文件并解密（文件不在了它会抛 404）；
     # download_response 加上 Content-Disposition 头，浏览器就会当作下载，并用上中文文件名
     return download_response(load_file(ctx, report.storage_name), report.filename, MEDIA_TYPES[report.format])
@@ -377,13 +379,13 @@ def preview_materials(analysis_id: str, route_id: str, target_mg: float | None =
     analysis = load_scored_analysis(db, principal, analysis_id)
     route = find_route(analysis.result, route_id)
     if route is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这条路线")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这条路线", "Route not found"))
     scale = Constraints.model_validate(analysis.constraints).scale
     # target_mg 没给时用规模档位对应的默认产量（data/scoring.toml 的 [scale]）。
     # 注意 Python 里 0 也算“假”，所以 target_mg=0 同样走默认值；只有负数会走到下面的 422
     amount = float(target_mg or ctx.reference.scoring["scale"][scale])
     if amount <= 0:
-        raise HTTPException(422, "目标产量要大于 0")
+        raise HTTPException(422, i18n.tr("目标产量要大于 0", "The target amount must be greater than 0"))
     # M13 从目标产量倒推每个起始原料要多少：各步按 1:1 投料，有报道产率的按产率放大，没有的按 100%
     return m13_reports.bill_of_materials(analysis.result, route, amount)
 
@@ -409,7 +411,7 @@ def _load_record(db: Session, principal: Principal, record_id: str) -> models.Ex
     """
     record = db.get(models.ExperimentRecord, record_id)
     if record is None or record.org_id != principal.org_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这条实验记录")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这条实验记录", "Experiment record not found"))
     return record
 
 
@@ -437,7 +439,7 @@ def record_experiment(analysis_id: str, route_id: str, step_index: int, body: sc
     analysis = load_finished_analysis(db, principal, analysis_id)
     route = find_route(analysis.result, route_id)
     if route is None or not 1 <= step_index <= len(route["steps"]):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这一步")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这一步", "Step not found"))
     # M14：在 experiment_records 表里加一行（内容加密；同时存下系统当时对这一步的评估，校准时拿来对比），
     # 并把这次结果挂到 analysis.result 里的那一步上，路线树和证据卡才会显示“已做”
     record = m14_backfill.save_record(
@@ -518,7 +520,7 @@ async def add_attachment(record_id: str, file: UploadFile = File(...), principal
     content_type = file.content_type or "application/octet-stream"
     # str.startswith 可以接受一个元组：以其中任意一个开头就算符合
     if not content_type.startswith(ATTACHMENT_TYPES):
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "附件只支持图片和 PDF")
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, i18n.tr("附件只支持图片和 PDF", "Attachments must be images or PDF files"))
     # 这个接口是 async def，因为读上传的文件要用 await；读的时候顺便检查大小（storage.read_upload）
     data = await read_upload(ctx, file)
     # safe_filename 去掉文件名里不能用的字符；save_file 把内容加密后写盘，表里只记随机的存储名
@@ -561,5 +563,5 @@ def download_attachment(attachment_id: str, principal: Principal = Depends(get_p
     attachment = db.get(models.ExperimentAttachment, attachment_id)
     # 附件表里自己记着 org_id，所以不用先去查它属于哪条实验记录
     if attachment is None or attachment.org_id != principal.org_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这个附件")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这个附件", "Attachment not found"))
     return download_response(load_file(ctx, attachment.storage_name), attachment.filename, attachment.content_type)

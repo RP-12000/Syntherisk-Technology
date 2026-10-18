@@ -94,6 +94,7 @@ data/ 目录下还有两样东西不是这里读的：demo_routes/（内置演�
 
     _NAME_NOISE、normalize_name   比较名称之前的统一处理
     _read_csv、_read_toml         读文件的两个小函数
+    register_english              把数据文件里配的英文（xxx_en）登记进中英对照（i18n.py）
     Compound                      compounds.csv 的一行
     CompoundLibrary               整张试剂表和它的几个索引
         load                      从 CSV 读
@@ -120,7 +121,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
+
+# 管制清单（controlled_substances.csv）的 list_name、category 两列里出现的中文和它们的英文。
+# 那张表没有英文列（物质名有 name_en，清单名和类别没有），所以对照写在这里；表里出现新的中文清单名或类别时要补上，
+# tests/test_reference.py 最后一个测试会查。
+for _zh, _en in (
+    ("易制毒化学品", "Drug precursor chemicals"),
+    ("第一类", "Category 1"),
+    ("第二类", "Category 2"),
+    ("第三类", "Category 3"),
+):
+    i18n.register(_zh, _en)
 
 # 名称里不影响含义的字符：空白（\s）、连字符、下划线、间隔号（· •）、逗号（半角和全角）、顿号、
 # 圆括号（半角和全角）、方括号。最后的 + 表示连着的一串一起处理
@@ -170,6 +183,8 @@ def _read_toml(path: Path) -> dict[str, Any]:
 
     TOML 里的 [表] 变成嵌套的字典，[[表]] 变成字典的列表，值是字符串、数字、布尔值或列表。
     tomllib 是 Python 自带的模块，要求用二进制方式（"rb"）打开文件。
+    文件里给显示文字配的英文（label_en 这类键）在这里登记进中英对照并拿掉，见 register_english()：
+    所以返回的字典里没有这些键，和加英文之前一样。
 
     抛出：
         FileNotFoundError        文件不存在。
@@ -178,7 +193,42 @@ def _read_toml(path: Path) -> dict[str, Any]:
         ReferenceData.load()。
     """
     with path.open("rb") as handle:
-        return tomllib.load(handle)
+        return register_english(tomllib.load(handle))
+
+
+def register_english(value: Any) -> Any:
+    """把数据文件里成对写的“中文 + 英文”登记进中英对照（i18n.register），并把英文那个键拿掉。
+
+    数据文件里每个会显示到界面上的中文，旁边都有一个多了 _en 后缀的键写它的英文：
+        label = "钯催化剂"            "name": "水杨酸", "name_en": "salicylic acid"
+        label_en = "Palladium catalysts"
+    登记以后，后端照旧只输出中文，请求要英文时由 i18n.localize() 整句换掉。
+    英文键登记完就删掉：这些表有的会原样返回给前端（GET /api/scoring/config、GET /api/meta/data-sources），
+    有的按固定的字段建对象（ConditionRule），留着的话中文的返回会多出键、建对象会报错。
+    只有一种不删：中文是带 {参数} 的模板（scoring.toml 的 weakest_link.suggestion），代码要自己填参数，
+    得拿得到英文模板（suggestion_en；也可以用 i18n.en_of(中文模板) 查）。
+
+    参数：
+        value  读进来的数据：字典、列表，或者别的值（原样返回）。嵌套的会一层层走到底。
+    返回：
+        传进来的那个对象本身（就地改的）。
+    谁在用：
+        本文件的 _read_toml()；m03_retrosynthesis.DemoEngine（演示路线的 JSON）。
+    """
+    if isinstance(value, list):
+        for item in value:
+            register_english(item)
+    elif isinstance(value, dict):
+        # 先把要处理的键列出来再动字典：一边遍历一边删会出错
+        for key in [k for k in value if isinstance(k, str) and k.endswith("_en") and k[:-3] in value]:
+            chinese, english = value[key[:-3]], value[key]
+            if isinstance(chinese, str) and isinstance(english, str):
+                i18n.register(chinese, english)
+                if "{" not in chinese:
+                    del value[key]
+        for item in value.values():
+            register_english(item)
+    return value
 
 
 # ---------------------------------------------------------------- 内置常用试剂表
@@ -284,6 +334,8 @@ class CompoundLibrary:
             record = chem.mol_record(row["smiles"])
             if record is None:
                 raise ValueError(f"{path.name}：{row['key']} 的 SMILES 读不出来：{row['smiles']}")
+            # 中文名 → 英文名记进中英对照（英文名照表里的原样）；少了哪一个就不登记
+            i18n.register(row["name_zh"], row["name_en"])
             compounds.append(
                 Compound(
                     key=row["key"],
@@ -558,6 +610,8 @@ class ReferenceData:
             if key is None:
                 # 没写结构，或者结构读不出来：这一行没法按结构匹配，跳过，不报错
                 continue
+            # 物质名的英文记进中英对照。清单名、类别两列的英文在文件开头登记
+            i18n.register(row["name_zh"], row["name_en"])
             # setdefault(key, [])：这个物质第一次出现时先放一个空列表，然后往里加
             controlled.setdefault(key, []).append(
                 ControlledEntry(
@@ -576,6 +630,7 @@ class ReferenceData:
         # TOML 里每个 [[rule]] 是一个字典，合起来是 "rule" 这个键下面的一个列表
         for raw in _read_toml(data_dir / "condition_rules.toml").get("rule", []):
             # ConditionRule(**raw)：把字典的键值当成关键字参数传给构造函数，所以 TOML 里的键必须和字段名一致
+            # （label_en、short_en、category_en、reason_en 四个英文键在 _read_toml 里已经登记并拿掉了，不在 raw 里）
             rule = ConditionRule(**raw)
             # 规则里点名的物质必须是 compounds.csv 里有的 key；写错了在启动时就报出来
             unknown = [s for s in rule.substances if s not in compounds.by_key]

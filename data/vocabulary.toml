@@ -4,117 +4,147 @@
 # ---------------------------------------------------------------- 试剂类别（排除试剂）
 [reagent_class.palladium]
 label = "钯催化剂"
+label_en = "Palladium catalysts"
 smarts = ["[Pd]"]
 synonyms = ["钯催化剂", "钯催化", "钯", "palladium", "pd 催化", "pd催化", "pd catalyst"]
 
 [reagent_class.precious_metal]
 label = "贵金属催化剂"
+label_en = "Precious-metal catalysts"
 smarts = ["[Pd]", "[Pt]", "[Rh]", "[Ru]", "[Ir]", "[Au]", "[Os]"]
 synonyms = ["贵金属", "贵金属催化剂", "precious metal", "noble metal"]
 
 [reagent_class.tin]
 label = "有机锡试剂"
+label_en = "Organotin reagents"
 smarts = ["[Sn]"]
 synonyms = ["有机锡", "锡试剂", "organotin", "stannane", "tin reagent"]
 
 [reagent_class.chromium]
 label = "铬试剂"
+label_en = "Chromium reagents"
 smarts = ["[Cr]"]
 synonyms = ["铬试剂", "六价铬", "铬酸", "chromium", "jones 试剂", "pcc"]
 
 [reagent_class.mercury]
 label = "汞试剂"
+label_en = "Mercury reagents"
 smarts = ["[Hg]"]
 synonyms = ["汞试剂", "汞", "mercury"]
 
 [reagent_class.cyanide]
 label = "氰化物"
+label_en = "Cyanides"
 smarts = ["[C-]#N"]
 synonyms = ["氰化物", "cyanide"]
 
 [reagent_class.azide]
 label = "叠氮化物"
+label_en = "Azides"
 smarts = ["[N-]=[N+]=[N-]", "[#6]N=[N+]=[N-]"]
 synonyms = ["叠氮", "叠氮化物", "azide"]
 
 [reagent_class.organolithium]
 label = "有机锂试剂"
+label_en = "Organolithium reagents"
 smarts = ["[Li][#6]", "[Li][#7]"]
 synonyms = ["有机锂", "锂试剂", "organolithium"]
 
 [reagent_class.grignard]
 label = "格氏试剂"
+label_en = "Grignard reagents"
 smarts = ["[Mg][#6]", "[Mg;+0;D0]"]
 synonyms = ["格氏试剂", "格氏", "grignard"]
 
 [reagent_class.osmium]
 label = "锇试剂"
+label_en = "Osmium reagents"
 smarts = ["[Os]"]
 synonyms = ["锇试剂", "osmium"]
 
 [reagent_class.halogenated_solvent]
 label = "卤代溶剂"
+label_en = "Halogenated solvents"
 substances = ["dichloromethane", "chloroform", "dichloroethane", "carbon_tetrachloride", "chlorobenzene"]
 synonyms = ["卤代溶剂", "氯代溶剂", "含氯溶剂", "halogenated solvent", "chlorinated solvent"]
 
 [reagent_class.peroxide]
 label = "过氧化物"
+label_en = "Peroxides"
 smarts = ["[OX2][OX2]"]
 synonyms = ["过氧化物", "过氧酸", "peroxide"]
 
 # ---------------------------------------------------------------- 做不了的条件（A10）
 [condition.pressurized_gas]
 label = "加压气体反应（H₂、CO）"
+label_en = "Pressurized gas reactions (H₂, CO)"
 short = "加压气体"
+short_en = "Pressurized gas"
 synonyms = ["加压", "高压", "氢化", "加氢", "氢气", "一氧化碳", "高压釜", "pressur", "hydrogenation", "autoclave"]
 
 [condition.anhydrous_anaerobic]
 label = "无水无氧操作"
+label_en = "Air- and moisture-free technique"
 short = "无水无氧"
+short_en = "Anhydrous, air-free"
 synonyms = ["无水无氧", "无水操作", "无氧操作", "schlenk", "anhydrous", "air-free", "air free"]
 
 [condition.glovebox]
 label = "手套箱"
+label_en = "Glovebox"
 short = "手套箱"
+short_en = "Glovebox"
 synonyms = ["手套箱", "glovebox", "glove box"]
 
 [condition.cryogenic]
 label = "低温（< −40 °C）"
+label_en = "Cryogenic (< −40 °C)"
 short = "低温"
+short_en = "Cryogenic"
 synonyms = ["低温", "-78", "−78", "干冰丙酮", "液氮", "cryogenic"]
 
 [condition.photo_electro]
 label = "光化学 / 电化学"
+label_en = "Photochemistry / electrochemistry"
 short = "光化学或电化学"
+short_en = "Photo- or electrochemistry"
 synonyms = ["光化学", "光催化", "光照", "电化学", "电解", "photo", "electro"]
 
 # ---------------------------------------------------------------- 纯化偏好（A13、A14）
 [purification.column_chromatography]
 label = "柱色谱"
+label_en = "Column chromatography"
 synonyms = ["柱色谱", "柱层析", "过柱", "色谱柱", "column", "chromatograph"]
 
 [purification.distillation]
 label = "蒸馏"
+label_en = "Distillation"
 synonyms = ["蒸馏", "减压蒸馏", "distill"]
 
 [purification.prep_hplc]
 label = "制备 HPLC"
+label_en = "Preparative HPLC"
 synonyms = ["制备hplc", "制备 hplc", "prep-hplc", "prep hplc", "hplc"]
 
 # ---------------------------------------------------------------- 安全要求（A11）
 [safety.acute_toxic]
 label = "急性毒性 1–2 类"
+label_en = "Acute toxicity Category 1–2"
 short = "剧毒"
+short_en = "Acutely toxic"
 synonyms = ["剧毒", "高毒", "致命", "acute tox"]
 
 [safety.cmr]
 label = "致癌、致突变、生殖毒性物质"
+label_en = "Carcinogenic, mutagenic or reprotoxic substances"
 short = "CMR"
 synonyms = ["致癌", "致突变", "生殖毒性", "cmr", "carcinogen"]
 
 [safety.controlled]
 label = "易制毒 / 管制化学品"
+label_en = "Drug precursors / controlled chemicals"
 short = "管制品"
+short_en = "Controlled substances"
 synonyms = ["易制毒", "易制爆", "管制", "controlled", "precursor"]
 
 # ---------------------------------------------------------------- 判断硬约束还是软偏好的措辞

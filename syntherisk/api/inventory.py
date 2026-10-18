@@ -64,7 +64,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from syntherisk import inventory_import, models
+from syntherisk import i18n, inventory_import, models
 from syntherisk.api import schemas
 from syntherisk.api.deps import Principal, get_ctx, get_db, get_principal
 from syntherisk.context import AppContext
@@ -99,7 +99,7 @@ def _own_item(db: Session, principal: Principal, item_id: str) -> models.Invento
         item.visibility == "team" or item.owner_id == principal.user_id
     )
     if not visible:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "库存里没有这一条")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("库存里没有这一条", "Inventory item not found"))
     return item
 
 
@@ -121,7 +121,7 @@ def _own_import(db: Session, principal: Principal, import_id: str) -> models.Inv
     """
     record = db.get(models.InventoryImport, import_id)
     if record is None or record.org_id != principal.org_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这次导入")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这次导入", "Import not found"))
     return record
 
 
@@ -197,12 +197,12 @@ def add_item(body: schemas.InventoryItemCreate, principal: Principal = Depends(g
     resolution = ctx.resolver.resolve_row(name=body.name or "", cas=body.cas or "", smiles=body.smiles or "")
     # 用户明确给了 SMILES，结果却不是靠 SMILES 认出来的，说明这个 SMILES 读不出来：直接报错，不拿名称去猜
     if body.smiles and resolution.source != "SMILES":
-        raise HTTPException(422, "SMILES 读不出来")
+        raise HTTPException(422, i18n.tr("SMILES 读不出来", "The SMILES could not be read"))
     inventory = InventoryService(db, principal.org_id, principal.user_id)
     # upsert：库存里已经有同一个结构就更新那一条，没有才新建；返回 (条目, 是不是新建的)
     item, created = inventory.upsert(
         # 名称的先后：用户填的 → 认出来的名字 → CAS 号 → “未命名”
-        name=body.name or resolution.name or body.cas or "未命名",
+        name=body.name or resolution.name or body.cas or i18n.tr("未命名", "Unnamed"),
         cas=resolution.cas or body.cas,
         # 没认出来时 resolution.smiles 是 None：照样入库，只是这一条没有结构，参与不了按结构的匹配
         smiles=resolution.smiles,
@@ -236,7 +236,7 @@ def update_item(item_id: str, body: schemas.InventoryItemUpdate, principal: Prin
     if body.smiles is not None:
         canonical = chem.canonical_smiles(body.smiles)
         if canonical is None:
-            raise HTTPException(422, "SMILES 读不出来")
+            raise HTTPException(422, i18n.tr("SMILES 读不出来", "The SMILES could not be read"))
         payload["smiles"] = canonical
         # 结构变了，盲索引也要跟着重算，否则以后按结构匹配会对不上
         item.structure_index = InventoryService(db, principal.org_id, principal.user_id).structure_index(canonical)
@@ -369,11 +369,11 @@ def resolve_import_row(import_id: str, row_id: str, body: schemas.ImportRowActio
     row = db.get(models.InventoryImportRow, row_id)
     # 这一行必须属于网址里的那一次导入，不能拿别的导入的行编号来凑
     if row is None or row.import_id != record.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "这次导入里没有这一行")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("这次导入里没有这一行", "This import has no such row"))
     # bucket 是这一行所在的栏。只有“需确认”“未识别”两栏的行可以处理；
     # 已匹配、已确认、已忽略的（以及还在排队、没处理到的）都返回 409
     if row.bucket not in ("needs_confirmation", "unrecognized"):
-        raise HTTPException(status.HTTP_409_CONFLICT, "这一行已经处理过了")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这一行已经处理过了", "This row has already been handled"))
     try:
         # confirm_row 按 action 处理：记进库存（或者只标成忽略），并更新这一行的 bucket 和 item_id
         inventory_import.confirm_row(db, row, principal.user_id, action=body.action, smiles=body.smiles, name=body.name)

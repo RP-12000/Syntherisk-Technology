@@ -53,6 +53,7 @@ B11 把路线全排除以后的重新搜索。
     RetrosynthesisEngine   一个“引擎”必须有的方法（协议）
     DemoEngine             演示引擎
     AiZynthEngine          AiZynthFinder 引擎：另起进程，或者在本进程里调用
+    _BRIDGE_WARNINGS、_bridge_warning         给桥接脚本的提示配英文
     _from_project_root、_aizynth_importable   两个小工具
     build_engine           按配置选一种引擎
 """
@@ -60,6 +61,7 @@ B11 把路线全排除以后的重新搜索。
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -68,8 +70,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from syntherisk import i18n
 from syntherisk.config import PROJECT_ROOT, Settings
 from syntherisk.modules import m01_structure as chem
+from syntherisk.reference import register_english
 
 # 桥接脚本的完整路径：和本文件在同一个文件夹里的 aizynth_bridge.py。
 # Path(__file__) 是本文件的路径，with_name 把最后的文件名换掉。子进程就是用 Python 去运行这个脚本
@@ -78,6 +82,7 @@ BRIDGE_SCRIPT = Path(__file__).with_name("aizynth_bridge.py")
 
 class EngineError(RuntimeError):
     """逆合成引擎用不了，或者搜索失败。消息是给人看的中文，会写明是哪一项配置或者哪一步出了问题。
+    消息都是用 i18n.tr() 拼的，所以每一句同时记下了英文（请求要英文时由 i18n.localize() 整句换掉）。
 
     什么时候抛：AiZynthFinder 的配置文件或 Python 解释器找不到（AiZynthEngine._check_files）；
                子进程起不来、异常退出、超时，或者进程内调用出错（AiZynthEngine.search / _run_subprocess）；
@@ -175,6 +180,9 @@ class DemoEngine:
     每个 JSON 文件是一个目标分子：
         {"target": {"smiles": …, "name": …}, "source_note": 一句来源说明,
          "routes": [{"name": 路线名, "tree": 路线树}, …]}
+    文件里的中文（分子名、路线名、反应名、条件说明、来源说明）旁边都配了英文，键名多一个 _en 后缀
+    （name_en、conditions_en、source_note_en）。读文件时把它们登记进中英对照（i18n.py）并从数据里拿掉，
+    所以交出去的路线树里没有这些键，和加英文之前一样。
     """
 
     # 引擎的名字。存进 Analysis.engine；流水线和证据卡看到 "demo" 会注明这是演示数据
@@ -191,7 +199,8 @@ class DemoEngine:
         self._targets: dict[str, dict[str, Any]] = {}
         # sorted：按文件名排序，保证每次读的先后一样
         for path in sorted(routes_dir.glob("*.json")):
-            data = json.loads(path.read_text(encoding="utf-8"))
+            # register_english：登记文件里配的英文（xxx_en）并把这些键拿掉，见 reference.py
+            data = register_english(json.loads(path.read_text(encoding="utf-8")))
             key = chem.key14_of(data["target"]["smiles"])
             if key is None:
                 raise ValueError(f"{path.name}：目标分子的 SMILES 读不出来")
@@ -219,12 +228,15 @@ class DemoEngine:
         # key14_of 读不出 SMILES 时给 None，换成空字符串去查，查不到就是 None
         data = self._targets.get(chem.key14_of(request.target_smiles) or "")
         if data is None:
-            names = "、".join(self.supported)
+            # i18n.join：中文用顿号连，英文那一句用逗号、并且用各个分子名的英文
+            names = i18n.join(self.supported)
             return SearchResult(
                 engine=self.name,
                 version=None,
                 routes=[],
-                warnings=[f"还没有接入 AiZynthFinder；内置演示引擎只有这几个分子的路线：{names}"],
+                warnings=[i18n.tr("还没有接入 AiZynthFinder；内置演示引擎只有这几个分子的路线：{names}",
+                                  "AiZynthFinder is not connected yet; the built-in demo engine only has routes for: {names}",
+                                  names=names)],
             )
         # 演示路线没有引擎打的分，score 填 None；路线名用文件里写的（比如“格氏羧基化”）
         routes = [{"tree": r["tree"], "name": r["name"], "score": None} for r in data["routes"]]
@@ -233,7 +245,7 @@ class DemoEngine:
             version=None,
             routes=routes,
             stats={"number_of_routes": len(routes), "demo": True},
-            warnings=[data.get("source_note", "演示数据")],
+            warnings=[data.get("source_note") or i18n.tr("演示数据", "Demo data")],
         )
 
     def describe(self) -> dict[str, Any]:
@@ -242,7 +254,8 @@ class DemoEngine:
         谁在用：context.AppContext.describe_modules（GET /api/meta/modules 和命令行 status 的 M3 一栏）。
         """
         return {"engine": self.name, "ready": True, "supported_targets": self.supported,
-                "note": "演示引擎：只返回内置的教科书路线，不做真正的逆合成搜索"}
+                "note": i18n.tr("演示引擎：只返回内置的教科书路线，不做真正的逆合成搜索",
+                                "Demo engine: returns built-in textbook routes only; no real retrosynthesis search")}
 
 
 class AiZynthEngine:
@@ -282,9 +295,15 @@ class AiZynthEngine:
         谁在用：search()（每次搜索之前）、describe()。
         """
         if not Path(self.config_path).is_file():
-            raise EngineError(f"找不到 AiZynthFinder 的配置文件：{self.config_path}（AIZYNTH_CONFIG）。公开模型下载完才会有这个文件。")
+            raise EngineError(i18n.tr(
+                "找不到 AiZynthFinder 的配置文件：{path}（AIZYNTH_CONFIG）。公开模型下载完才会有这个文件。",
+                "AiZynthFinder config file not found: {path} (AIZYNTH_CONFIG). "
+                "It only exists once the public models have been downloaded.",
+                path=self.config_path))
         if not self.in_process and not Path(self.python_path).is_file():
-            raise EngineError(f"找不到装了 AiZynthFinder 的 Python：{self.python_path}（AIZYNTH_PYTHON）")
+            raise EngineError(i18n.tr("找不到装了 AiZynthFinder 的 Python：{path}（AIZYNTH_PYTHON）",
+                                      "Python with AiZynthFinder installed not found: {path} (AIZYNTH_PYTHON)",
+                                      path=self.python_path))
 
     def _payload(self, request: SearchRequest) -> dict[str, Any]:
         """把一次搜索的全部输入拼成一个字典，也就是交给 aizynth_bridge 的 request.json 的内容。
@@ -335,7 +354,8 @@ class AiZynthEngine:
                 data = aizynth_bridge.run(payload)
             except Exception as exc:  # noqa: BLE001
                 # 不管它里面出的是什么错，都包成 EngineError；“from exc” 把原来的错误留在后面，日志里看得到
-                raise EngineError(f"AiZynthFinder 搜索失败：{exc}") from exc
+                raise EngineError(i18n.tr("AiZynthFinder 搜索失败：{error}", "AiZynthFinder search failed: {error}",
+                                          error=str(exc))) from exc
         else:
             data = self._run_subprocess(payload, request.time_limit, should_cancel)
         # data 是 aizynth_bridge.run() 返回（或者写进 result.json）的那个字典；缺哪一项就用空的顶上
@@ -344,7 +364,7 @@ class AiZynthEngine:
             version=data.get("version"),
             routes=data.get("routes", []),
             stats=data.get("stats", {}),
-            warnings=data.get("warnings", []),
+            warnings=[_bridge_warning(text) for text in data.get("warnings", [])],
         )
 
     def _run_subprocess(self, payload: dict[str, Any], time_limit: int, should_cancel) -> dict[str, Any]:
@@ -378,7 +398,9 @@ class AiZynthEngine:
                     # stderr=subprocess.STDOUT：报错信息也并到同一个文件里
                     process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
                 except OSError as exc:
-                    raise EngineError(f"启动不了 AiZynthFinder 的 Python 解释器：{exc}") from exc
+                    raise EngineError(i18n.tr("启动不了 AiZynthFinder 的 Python 解释器：{error}",
+                                              "Could not start the Python interpreter for AiZynthFinder: {error}",
+                                              error=str(exc))) from exc
                 # time.monotonic() 是只增不减的计时器（不受改系统时间影响），用来算“最晚等到什么时候”
                 deadline = time.monotonic() + time_limit + 300  # 加载模型本身就要几十秒
                 # process.poll() 在子进程还没结束时返回 None。每半秒看一次：要不要取消、有没有超时
@@ -389,7 +411,7 @@ class AiZynthEngine:
                         raise SearchCancelled()
                     if time.monotonic() > deadline:
                         process.kill()
-                        raise EngineError("AiZynthFinder 搜索超时")
+                        raise EngineError(i18n.tr("AiZynthFinder 搜索超时", "AiZynthFinder search timed out"))
                     time.sleep(0.5)
             # 到这里子进程已经结束，日志文件也关上了。退出码 0 并且写出了结果文件才算成功
             if process.returncode != 0 or not output_path.exists():
@@ -398,10 +420,17 @@ class AiZynthEngine:
                 hint = ""
                 # 认出最常见的一种失败（README“踩过的坑”里的版本冲突），在报错后面补一段怎么修
                 if "pyarrow requires NumPy" in log_text:
-                    hint = ("\n这是环境里 pyarrow 和 NumPy 的版本冲突：pip 装了只认 NumPy 2 的新版 pyarrow，"
-                            "而 AiZynthFinder 要求 NumPy 低于 2。把 pyarrow 换成 25.0.0（照 requirements.lock.txt 装就不会有这个问题），见 README。")
-                # log_text[-1500:]：只带日志的最后 1500 个字符，真正的报错一般在最后
-                raise EngineError(f"AiZynthFinder 搜索失败（退出码 {process.returncode}）：\n{log_text[-1500:]}{hint}")
+                    hint = i18n.tr(
+                        "\n这是环境里 pyarrow 和 NumPy 的版本冲突：pip 装了只认 NumPy 2 的新版 pyarrow，"
+                        "而 AiZynthFinder 要求 NumPy 低于 2。把 pyarrow 换成 25.0.0（照 requirements.lock.txt 装就不会有这个问题），见 README。",
+                        "\nThis is a pyarrow / NumPy version conflict in the environment: pip installed a newer pyarrow "
+                        "that only supports NumPy 2, while AiZynthFinder requires NumPy below 2. Switch pyarrow to 25.0.0 "
+                        "(installing from requirements.lock.txt avoids this); see the README.")
+                # log_text[-1500:]：只带日志的最后 1500 个字符，真正的报错一般在最后。
+                # hint 是上面那句（有英文对照）或者空的，当参数传进去，英文句子里用它的英文
+                raise EngineError(i18n.tr("AiZynthFinder 搜索失败（退出码 {code}）：\n{log}{hint}",
+                                          "AiZynthFinder search failed (exit code {code}):\n{log}{hint}",
+                                          code=process.returncode, log=log_text[-1500:], hint=hint))
             # 成功：读回结果。读完以后离开最外层的 with，临时文件夹被删掉
             return json.loads(output_path.read_text(encoding="utf-8"))
 
@@ -431,6 +460,39 @@ class AiZynthEngine:
             "config": self.config_path,
             "python": None if self.in_process else self.python_path,
         }
+
+
+# 桥接脚本（aizynth_bridge.py）给的提示是在另一个进程里拼好的中文句子，那边记不了英文。
+# 这里按它的四种写法认出来，每种配一句英文模板；(.+) 抓的是句子里会变的部分（名称、出错原因）。
+# 那个脚本里的提示改了写法的话，这里要跟着改；认不出来的提示原样留着（只有中文）。
+_BRIDGE_WARNINGS: list[tuple[re.Pattern[str], str, str]] = [
+    (re.compile(r"^(.+)没能加进搜索终点：(.*)$", re.S),
+     "{a}没能加进搜索终点：{b}", "{a} could not be added as search stock: {b}"),
+    (re.compile(r"^过滤模型 (.+) 没有加载：(.*)$", re.S),
+     "过滤模型 {a} 没有加载：{b}", "Filter model {a} was not loaded: {b}"),
+    (re.compile(r"^没能排除 (.+)：(.*)$", re.S),
+     "没能排除 {a}：{b}", "Could not exclude {a}: {b}"),
+]
+# 上面第一种提示里的两个名称，和不带参数的那一句提示
+i18n.register("客户库存", "Customer inventory")
+i18n.register("内置在售试剂表", "Built-in purchasable reagent table")
+i18n.register("选了“仅用库存”，但库存是空的，搜索时仍按在售目录判断终点",
+              "“Inventory only” was selected but the inventory is empty; the search still uses the purchasable catalog as stock")
+
+
+def _bridge_warning(text: str) -> str:
+    """给桥接脚本的一句提示配上英文：原样返回这句中文，同时把它的英文记进当前的对照表。
+
+    参数：text  aizynth_bridge.run() 给的一句提示。
+    返回：text 本身。认不出是哪一种提示时什么都不记。
+    谁在用：AiZynthEngine.search()。
+    """
+    for pattern, chinese, english in _BRIDGE_WARNINGS:
+        match = pattern.match(text)
+        if match:
+            # 用同一句中文模板重新拼一遍，得到的和 text 一字不差；tr() 顺便记下英文
+            return i18n.tr(chinese, english, a=match.group(1), b=match.group(2))
+    return text
 
 
 def _from_project_root(path: str) -> Path:
@@ -480,16 +542,21 @@ def build_engine(settings: Settings) -> RetrosynthesisEngine:
     # 明确指定了 aizynth_bridge，或者 auto 而条件满足。明确指定而条件不满足的，在里面报错
     if choice == "aizynth_bridge" or (choice == "auto" and bridge_ready):
         if not bridge_ready:
-            raise EngineError(
+            raise EngineError(i18n.tr(
                 "M3_ENGINE=aizynth_bridge 需要设置 AIZYNTH_CONFIG；"
-                "aizynthfinder 没装在后端这个环境里的话，还要用 AIZYNTH_PYTHON 指到装了它的那个 Python"
-            )
+                "aizynthfinder 没装在后端这个环境里的话，还要用 AIZYNTH_PYTHON 指到装了它的那个 Python",
+                "M3_ENGINE=aizynth_bridge requires AIZYNTH_CONFIG; if aizynthfinder is not installed in the backend "
+                "environment, also point AIZYNTH_PYTHON to the Python that has it",
+            ))
         return AiZynthEngine(settings, in_process=False)
     # 明确指定了 aizynth_inprocess，同样是条件不满足就报错。
     # （auto 走不到这一支：inprocess_ready 成立时 bridge_ready 一定也成立，上面已经返回了）
     if choice == "aizynth_inprocess" or (choice == "auto" and inprocess_ready):
         if not inprocess_ready:
-            raise EngineError("M3_ENGINE=aizynth_inprocess 需要当前环境装了 aizynthfinder，并设置 AIZYNTH_CONFIG")
+            raise EngineError(i18n.tr(
+                "M3_ENGINE=aizynth_inprocess 需要当前环境装了 aizynthfinder，并设置 AIZYNTH_CONFIG",
+                "M3_ENGINE=aizynth_inprocess requires aizynthfinder installed in the current environment and AIZYNTH_CONFIG set",
+            ))
         return AiZynthEngine(settings, in_process=True)
     # 其余情况：M3_ENGINE=demo，或者 auto 而 AiZynthFinder 没配好。settings.data_dir 默认是项目下的 data/
     return DemoEngine(settings.data_dir / "demo_routes")

@@ -149,7 +149,7 @@ def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
 # 表已经建好以后才加进来的列。create_all 只建新表、不改旧表，所以旧数据库要在这里补上
 # 结构是 {表名: {列名: 列的 SQL 类型}}。现在只有一项：先例库的 center 列（反应中心，见 models.ReactionPrecedent）。
 # 以后给已有的表加列，除了改 models.py，还要在这里登记一行。这里只管加列；改列的类型、删列它做不了
-_ADDED_COLUMNS = {"reaction_precedents": {"center": "TEXT"}}
+_ADDED_COLUMNS = {"reaction_precedents": {"center": "TEXT"}, "analyses": {"language": "VARCHAR(8)"}}
 
 
 def _add_missing_columns(engine: Engine) -> None:

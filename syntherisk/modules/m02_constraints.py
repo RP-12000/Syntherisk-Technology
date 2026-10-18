@@ -43,6 +43,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from syntherisk import i18n
 from syntherisk.constraints import RequirementTag
 from syntherisk.llm import LLMError, LLMService
 from syntherisk.modules.m01_resolver import NameResolver
@@ -176,9 +177,11 @@ class ConstraintParser:
                         "provider": response.provider, "model": response.model, "note": ""}
             except LLMError as exc:
                 # 超时、拒答、返回的不是合格的 JSON 等：不让请求失败，记下原因，往下走关键词规则
-                note = f"大模型没有调通（{exc}），这次用关键词规则解析"
+                # note 经过 i18n.tr()：返回中文，并记下英文。原因（exc）先转成字符串，它有英文对照时英文句子里用英文
+                note = i18n.tr("大模型没有调通（{error}），这次用关键词规则解析",
+                               "The LLM call failed ({error}); parsed with keyword rules this time", error=str(exc))
         else:
-            note = "未配置大模型，用关键词规则解析"
+            note = i18n.tr("未配置大模型，用关键词规则解析", "No LLM is configured; parsed with keyword rules")
         tags, unsupported = self._parse_with_rules(text)
         return {"tags": tags, "unsupported": unsupported, "generated_by": "rules", "note": note}
 
@@ -212,19 +215,35 @@ class ConstraintParser:
             · 每个标签交给 _make_tag 检查。通不过的（编号不在词表里、物质认不出来……），
               把它的 source_text（没有就用 value）加到“不支持”里。
             · kind 和 value 都相同的标签只留第一个。
+            · 模型没有按形状给的内容不会让这里报错：tags 里不是字典的项（比如一句话）原样归到“不支持”；
+              kind、hardness 不是字符串的当作没给；unsupported 只给了一句话（不是列表）也认。
         例（tests/test_llm.py）：模型给了四个标签——试剂类别 tin 和 plutonium、物质“独角兽粉”、条件 cryogenic。
             词表里没有 plutonium，“独角兽粉”认不出结构，所以只留下两个标签（有机锡试剂、低温），
             “不用钚”“不用独角兽粉”这两段原话进了不支持。
         谁在用：parse()。
         """
         tags: list[dict[str, Any]] = []
-        # “data.get(...) or []”：键不存在或者值是 None 时当成空列表
-        unsupported = [str(item) for item in data.get("unsupported") or [] if str(item).strip()]
-        for raw in data.get("tags") or []:
-            tag = self._make_tag(raw.get("kind"), str(raw.get("value", "")).strip(), raw.get("hardness"),
-                                 str(raw.get("source_text", "")))
+        # 模型不一定按 SCHEMA 的形状给（LLM_JSON_MODE=json_object 时厂商不保证）。下面每一处都先看类型：
+        # 形状不对的那一部分当成“没有”或者归到“不支持”，不让一处不合格式的内容把整个请求变成报错。
+        # unsupported 正常是字符串的列表；只给了一句话（一个字符串）也认；是别的东西就当成没有
+        listed = data.get("unsupported")
+        if isinstance(listed, str):
+            listed = [listed]
+        unsupported = [str(item) for item in listed if str(item).strip()] if isinstance(listed, list) else []
+        raw_tags = data.get("tags")
+        for raw in raw_tags if isinstance(raw_tags, list) else []:
+            if not isinstance(raw, dict):
+                # 这一项不是标签（比如模型直接写了一句话）：执行不了，原样归到“不支持”
+                if str(raw).strip():
+                    unsupported.append(str(raw))
+                continue
+            kind, hardness = raw.get("kind"), raw.get("hardness")
+            # “x or ""”：键不存在或者值是 None 时当成空字符串
+            source_text = str(raw.get("source_text") or "")
+            tag = self._make_tag(kind if isinstance(kind, str) else None, str(raw.get("value", "")).strip(),
+                                 hardness if isinstance(hardness, str) else None, source_text)
             if tag is None:
-                unsupported.append(raw.get("source_text") or str(raw.get("value")))
+                unsupported.append(source_text or str(raw.get("value")))
             elif not any(t["kind"] == tag["kind"] and t["value"] == tag["value"] for t in tags):
                 tags.append(tag)
         return tags, unsupported
@@ -256,20 +275,30 @@ class ConstraintParser:
         hardness = hardness if hardness in ("hard", "soft") else "hard"
         smiles = None
         # 下面一串 if / elif：每个分支既是检查（条件不成立就落到最后的 else，返回 None），也负责写 label
+        # label 都用 i18n.tr() 拼：返回的是中文，同时记下整句的英文；硬约束、软偏好各是一句完整的模板。
+        # 词表里的名称当参数传进去，英文句子里用的是 reference.py 给它登记的英文
+        hard = hardness == "hard"
         if kind == "exclude_reagent_class" and value in vocabulary.get("reagent_class", {}):
-            label = f"{'排除试剂' if hardness == 'hard' else '少用试剂'}：{vocabulary['reagent_class'][value]['label']}"
+            name = vocabulary["reagent_class"][value]["label"]
+            label = (i18n.tr("排除试剂：{name}", "Exclude reagent: {name}", name=name) if hard
+                     else i18n.tr("少用试剂：{name}", "Limit reagent: {name}", name=name))
         elif kind == "exclude_condition" and value in vocabulary.get("condition", {}):
-            label = f"{'排除' if hardness == 'hard' else '尽量避免'}：{self.reference.label_for('condition', value, short=True)}"
+            name = self.reference.label_for("condition", value, short=True)
+            label = (i18n.tr("排除：{name}", "Exclude: {name}", name=name) if hard
+                     else i18n.tr("尽量避免：{name}", "Avoid if possible: {name}", name=name))
         elif kind == "avoid_purification" and value in vocabulary.get("purification", {}):
-            label = f"纯化偏好：{'不用' if hardness == 'hard' else '避免'}{vocabulary['purification'][value]['label']}"
+            name = vocabulary["purification"][value]["label"]
+            label = (i18n.tr("纯化偏好：不用{name}", "Exclude purification: {name}", name=name) if hard
+                     else i18n.tr("纯化偏好：避免{name}", "Avoid purification: {name}", name=name))
         elif kind == "safety" and value in vocabulary.get("safety", {}):
             # 安全要求不分软硬：不管传进来的 hardness 是什么，都改成硬约束
             hardness = "hard"
-            label = f"排除：{self.reference.label_for('safety', value, short=True)}"
+            label = i18n.tr("排除：{name}", "Exclude: {name}",
+                            name=self.reference.label_for("safety", value, short=True))
         elif kind == "max_steps" and value.isdigit() and 1 <= int(value) <= 15:
             # 步数上限同样一律是硬约束；1–15 和 constraints.AdvancedParameters.max_steps 的范围一致
             hardness = "hard"
-            label = f"步数 ≤ {int(value)}"
+            label = i18n.tr("步数 ≤ {steps}", "Steps ≤ {steps}", steps=int(value))
         elif kind == "exclude_substance" and value:
             # 具体物质：要能找到结构才算数（M10 是按结构去认“这一步用没用到它”的）。
             # 先查内置试剂表（不联网）；查不到、又给了 resolver 时，再用 A3 那一套去查，只要第一个候选
@@ -283,7 +312,8 @@ class ConstraintParser:
             if smiles is None:
                 return None
             # 显示用查到的正式名称（比如用户写“氯仿”，这里显示“三氯甲烷”）；value 仍是传进来的那个名称
-            label = f"{'排除试剂' if hardness == 'hard' else '少用试剂'}：{name}"
+            label = (i18n.tr("排除试剂：{name}", "Exclude reagent: {name}", name=name) if hard
+                     else i18n.tr("少用试剂：{name}", "Limit reagent: {name}", name=name))
         else:
             return None
         # 用 Pydantic 模型建一次（顺便按 RequirementTag 的定义校验），再用 model_dump() 转成普通字典

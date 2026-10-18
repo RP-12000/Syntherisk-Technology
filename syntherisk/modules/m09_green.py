@@ -32,16 +32,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import ReferenceData
 
 # CHEM21 四档评级的中文名。键是 data/compounds.csv 里 solvent_class 一列的取值。
 # 用在证据卡的 green.solvents[].class_label 和依据文字（basis）里。
+# i18n.tr 返回的就是中文，同时登记了英文（请求带 ?lang=en 时换成英文，见 syntherisk/i18n.py）
 SOLVENT_CLASS_LABELS = {
-    "recommended": "推荐",
-    "problematic": "有问题",
-    "hazardous": "有害",
-    "highly_hazardous": "高度有害",
+    "recommended": i18n.tr("推荐", "Recommended"),
+    "problematic": i18n.tr("有问题", "Problematic"),
+    "hazardous": i18n.tr("有害", "Hazardous"),
+    "highly_hazardous": i18n.tr("高度有害", "Highly hazardous"),
 }
 # 四档从最差到最好的顺序。一步用到几种溶剂时，按其中最差的一种计分。
 _WORST_FIRST = ["highly_hazardous", "hazardous", "problematic", "recommended"]
@@ -137,15 +139,18 @@ def evaluate_green(reference: ReferenceData, reactants: list[str], product: str,
     # 依据文字：证据卡和报告里直接显示。{economy:g} 去掉多余的小数位（75.0 显示成 75）
     basis = []
     if economy is not None:
-        basis.append(f"原子经济性 {economy:g}%")
+        basis.append(i18n.tr("原子经济性 {economy:g}%", "Atom economy {economy:g}%", economy=economy))
     if worst is not None:
-        # 列出全部认出来的溶剂的名字，括号里写最差那一档的中文名
-        names = "、".join(s["name"] for s in solvents)
-        basis.append(f"溶剂 {names}（{SOLVENT_CLASS_LABELS[worst]}）")
+        # 列出全部认出来的溶剂的名字，括号里写最差那一档的中文名。
+        # 名字、档名各有英文对照，i18n.join / i18n.tr 拼英文句子时会自动换上
+        names = i18n.join([s["name"] for s in solvents])
+        basis.append(i18n.tr("溶剂 {names}（{label}）", "Solvent {names} ({label})",
+                             names=names, label=SOLVENT_CLASS_LABELS[worst]))
     return {
         "atom_economy": economy,
         "solvents": solvents,
         "solvent_class": worst,
         "score": score,
-        "basis": "；".join(basis) or "反应物或溶剂信息不全，无法评估",
+        "basis": i18n.join(basis, "；", "; ")
+        or i18n.tr("反应物或溶剂信息不全，无法评估", "Reactant or solvent information is incomplete; cannot be assessed"),
     }

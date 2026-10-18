@@ -30,7 +30,7 @@
 
 依赖
     modules/m01_structure.py（画结构图）、modules/m10_scoring.py（六个维度的顺序、置信度的中文）、
-    reference.py（data/scoring.toml 里的权重和维度名）。
+    modules/m05_precedents.py（按文献号重新拼先例的原文链接）、reference.py（data/scoring.toml 里的权重和维度名）。
 
 本文件里有什么
     SOURCE_MARKERS    来源编号 → 句子后面方括号里显示的字
@@ -47,7 +47,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
+from syntherisk.modules.m05_precedents import precedent_url
 from syntherisk.modules.m10_scoring import CONFIDENCE_LABELS, DIMENSIONS
 from syntherisk.reference import ReferenceData
 
@@ -57,6 +59,20 @@ SOURCE_MARKERS = {
     "ROUTE": "路线", "GHS": "GHS", "STOCK": "库存", "CALC": "计算", "SCORE": "评分",
     "MODEL": "模型", "DEMO": "演示数据", "RULE": "规则",
 }
+# 同一张表的英文。这几个词太短，别处也当标签用（“库存”是物料的状态，“规则”“评分”是进度面板上的模块名），
+# 英文各不相同，所以不登记成固定对照；marker_for() 拼方括号时再把“[库存] → [Stock]”这样的整段记下来
+SOURCE_MARKERS_EN = {
+    "ROUTE": "Route", "GHS": "GHS", "STOCK": "Stock", "CALC": "Calc", "SCORE": "Scoring",
+    "MODEL": "Model", "DEMO": "Demo data", "RULE": "Rule",
+}
+
+
+def _pair(zh: str, en: str) -> str:
+    """把“这段中文 → 这段英文”记进当前的对照表，返回中文。两段都已经拼好、没法写成一个模板时用。
+
+    做法是借 i18n.tr() 带参数的写法：中文模板只取 zh，英文模板只取 en。
+    """
+    return i18n.tr("{zh}", "{en}", zh=zh, en=en) if zh != en else zh
 
 
 def find_route(result: dict[str, Any], route_id: str) -> dict[str, Any] | None:
@@ -128,7 +144,7 @@ def build_sources(result: dict[str, Any], reaction: dict[str, Any]) -> list[dict
         reaction  反应表里这一步的字典。
     返回：
         来源列表，每一项是 {"id": 来源编号, "type": 来源类型, "label": 显示的名字}，
-        先例那几项另有 "url"（专利或文献的链接，可能是 None）。顺序固定：
+        先例那几项另有 "url"（专利或文献的链接；拼不出能打开的链接时是 None）。顺序固定：
         路线 → 各条先例 → 条件规则 → GHS → 库存 → 计算 → 评分 →（有的话）模型 →（有的话）演示数据。
         type 的取值：route / precedent / rule / ghs / stock / calculation / score / model / demo。
     谁在用：
@@ -136,7 +152,11 @@ def build_sources(result: dict[str, Any], reaction: dict[str, Any]) -> list[dict
     """
     engine = result["engine"]["name"]
     # 第一项总是路线本身。引擎名不是 aizynthfinder 的（现在只有内置的演示引擎 demo）都标成“演示数据”
-    sources = [{"id": "ROUTE", "type": "route", "label": f"逆合成路线（{'AiZynthFinder' if engine == 'aizynthfinder' else '演示数据'}）"}]
+    sources = [{
+        "id": "ROUTE", "type": "route",
+        "label": i18n.tr("逆合成路线（AiZynthFinder）", "Retrosynthesis route (AiZynthFinder)") if engine == "aizynthfinder"
+        else i18n.tr("逆合成路线（演示数据）", "Retrosynthesis route (demo data)"),
+    }]
     # 每条先例一个来源。先例的 ref 是 M5 编的 "P1"、"P2"……，去掉开头的 P 就是显示用的序号
     for precedent in (reaction.get("evidence") or {}).get("precedents") or []:
         number = precedent["ref"][1:]
@@ -145,28 +165,31 @@ def build_sources(result: dict[str, Any], reaction: dict[str, Any]) -> list[dict
                 "id": precedent["ref"],
                 "type": "precedent",
                 # 形如 “先例 1 · 专利 USTEST0001”
-                "label": f"先例 {number} · {precedent['doc_type_label']} {precedent['document_id']}",
-                "url": precedent["url"],
+                "label": i18n.tr("先例 {number} · {doc_type} {document_id}", "Precedent {number} · {doc_type} {document_id}",
+                                 number=number, doc_type=precedent["doc_type_label"], document_id=precedent["document_id"]),
+                # 按文献号重新拼，不用结果里存着的 url：旧分析存的是旧写法拼的链接，很多打不开（m05 的 precedent_url）
+                "url": precedent_url(precedent),
             }
         )
     # 命中的每条条件规则一个来源：编号是 “RULE:” 加规则编号，名字用规则的类别（比如 “规则 · 气氛”）
     tags = (reaction.get("conditions") or {}).get("tags") or []
     for tag in tags:
-        sources.append({"id": f"RULE:{tag['rule_id']}", "type": "rule", "label": f"规则 · {tag['category']}"})
+        sources.append({"id": f"RULE:{tag['rule_id']}", "type": "rule",
+                        "label": i18n.tr("规则 · {category}", "Rule · {category}", category=tag["category"])})
     # 一条规则都没命中时放一个笼统的 RULE，“没有命中需要特殊操作的规则”这类话才有出处可引
     if not tags:
-        sources.append({"id": "RULE", "type": "rule", "label": "条件规则"})
+        sources.append({"id": "RULE", "type": "rule", "label": i18n.tr("条件规则", "Condition rules")})
     # 下面四个每张卡都有：危害分类、可得性、计算出来的量、评分规则
-    sources.append({"id": "GHS", "type": "ghs", "label": "GHS 危害分类"})
-    sources.append({"id": "STOCK", "type": "stock", "label": "库存与在售目录"})
-    sources.append({"id": "CALC", "type": "calculation", "label": "计算（原子经济性、溶剂评级）"})
-    sources.append({"id": "SCORE", "type": "score", "label": "评分规则"})
+    sources.append({"id": "GHS", "type": "ghs", "label": i18n.tr("GHS 危害分类", "GHS hazard classification")})
+    sources.append({"id": "STOCK", "type": "stock", "label": i18n.tr("库存与在售目录", "Inventory and vendor catalogs")})
+    sources.append({"id": "CALC", "type": "calculation", "label": i18n.tr("计算（原子经济性、溶剂评级）", "Calculated (atom economy, solvent rating)")})
+    sources.append({"id": "SCORE", "type": "score", "label": i18n.tr("评分规则", "Scoring rules")})
     # 这一步是逆合成模型提出来的（反应上有 model 信息）才有 MODEL
     if reaction.get("model"):
-        sources.append({"id": "MODEL", "type": "model", "label": "逆合成模型依据（不是文献证据）"})
+        sources.append({"id": "MODEL", "type": "model", "label": i18n.tr("逆合成模型依据（不是文献证据）", "Retrosynthesis model output (not literature evidence)")})
     # 条件说明来自内置演示路线时才有 DEMO
     if (reaction.get("conditions") or {}).get("source") == "DEMO":
-        sources.append({"id": "DEMO", "type": "demo", "label": "演示数据（教科书层面的条件概述）"})
+        sources.append({"id": "DEMO", "type": "demo", "label": i18n.tr("演示数据（教科书层面的条件概述）", "Demo data (textbook-level outline of conditions)")})
     return sources
 
 
@@ -187,9 +210,13 @@ def marker_for(source_id: str, sources: list[dict[str, Any]]) -> str:
     if source_id.startswith("P") and source_id[1:].isdigit():
         return f"[{source_id[1:]}]"
     if source_id.startswith("RULE:"):
-        label = next((s["label"] for s in sources if s["id"] == source_id), "规则")
-        return f"[{label}]"
-    return f"[{SOURCE_MARKERS.get(source_id, source_id)}]"
+        # 来源列表里那条规则的名字（build_sources 拼的，有英文对照）；查不到就用笼统的“规则”
+        label = next((s["label"] for s in sources if s["id"] == source_id), None)
+        if label is None:
+            return _pair(f"[{SOURCE_MARKERS['RULE']}]", f"[{SOURCE_MARKERS_EN['RULE']}]")
+        return i18n.tr("[{label}]", "[{label}]", label=label)
+    # 固定的几种：中文、英文各查各的表，把整个方括号记成一条对照
+    return _pair(f"[{SOURCE_MARKERS.get(source_id, source_id)}]", f"[{SOURCE_MARKERS_EN.get(source_id, source_id)}]")
 
 
 def render_sentences(sentences: list[dict[str, Any]], sources: list[dict[str, Any]]) -> str:
@@ -210,9 +237,14 @@ def render_sentences(sentences: list[dict[str, Any]], sources: list[dict[str, An
     for sentence in sentences:
         # rstrip 的参数是“一组字符”而不是一个词：把句尾的中英文句号、分号和空格都去掉，下面统一补句号
         text = sentence["text"].rstrip("。.；; ")
-        markers = "".join(marker_for(source_id, sources) for source_id in sentence["sources"])
-        parts.append(f"{text}{markers}。")
-    return "".join(parts)
+        # 英文那一份同样处理：句子有英文对照（模板生成的句子）就取它的英文，去掉句尾标点，
+        # 再把“去掉标点的中文 → 去掉标点的英文”记下来。大模型直接写成英文的句子没有对照，两份相同
+        text = _pair(text, str(i18n.en_of(sentence["text"])).rstrip("。.；; "))
+        # 引用标记一个挨一个，中间不加分隔符；i18n.join 记下连起来以后的英文
+        markers = i18n.join([marker_for(source_id, sources) for source_id in sentence["sources"]], "", "")
+        parts.append(i18n.tr("{text}{markers}。", "{text}{markers}.", text=text, markers=markers))
+    # 中文句子之间不加空格，英文句子之间空一格
+    return i18n.join(parts, "", " ")
 
 
 def build_card(
@@ -235,8 +267,9 @@ def build_card(
         with_svg    True 时给产物、反应物、试剂各带一张结构图（SVG）。接口上是 ?svg=true，默认不带。
     返回：
         证据卡，一个可以直接转成 JSON 的字典。每个字段的含义见函数末尾 return 处的注释。
-        卡里的 precedents、conditions、hazards、green、model、soft_hits 是 result 里原对象的引用，
-        不是拷贝，调用方不要原地改它们。
+        卡里的 conditions、hazards、green、model、soft_hits 是 result 里原对象的引用，
+        不是拷贝，调用方不要原地改它们。precedents 里的每一项是复制出来的（换上了重新拼的 url），
+        但它里面的列表（agents）仍然是原对象。
     副作用：
         没有。不改 result，不查数据库，不联网。
     抛出：
@@ -288,7 +321,7 @@ def build_card(
         "step_key": step["key"],
         # 反应名；title 是卡片的标题，形如 “第 4 步 · 格氏羧基化”
         "name": reaction["name"],
-        "title": f"第 {step_index} 步 · {reaction['name']}",
+        "title": i18n.tr("第 {index} 步 · {name}", "Step {index} · {name}", index=step_index, name=reaction["name"]),
         # ---- 分数和置信度
         # 步骤分（0–100，一位小数）；六个维度都没有数据时是 None
         "score": step["score"],
@@ -325,7 +358,10 @@ def build_card(
         #   class_similarity 反应一致的程度；doc_type、doc_type_label、document_id、year、doi、title、url
         #   文献信息；source、source_name 数据来源；yield_pct 报道的产率（%）；reaction_smiles 先例的反应；
         #   agents 先例用的试剂（SMILES 列表）；conditions_text、temperature_c 条件；id 先例库里的行号
-        "precedents": evidence.get("precedents") or [],
+        # 每条复制一份，url 按文献号重新拼（m05 的 precedent_url）：旧分析里存的链接很多打不开，
+        # 拼不出能打开的链接时是 None。{**precedent, "url": …} 是“原字典的全部键，再把 url 换掉”的新字典
+        "precedents": [{**precedent, "url": precedent_url(precedent)}
+                       for precedent in evidence.get("precedents") or []],
         # ---- 反应本身
         # “反应物>试剂>产物”形式的反应 SMILES
         "reaction_smiles": reaction["reaction_smiles"],
@@ -341,7 +377,7 @@ def build_card(
         "conditions": reaction.get("conditions") or {},
         # 产率（M5 从先例里取的文献值）：source 是 literature / similar_literature / none，label 是显示的文字；
         # 有报道值时还有 low、high、median、n（几个先例）、refs（出自哪几条先例）
-        "yield": reaction.get("yield") or {"source": "none", "label": "无产率记录", "refs": []},
+        "yield": reaction.get("yield") or {"source": "none", "label": i18n.tr("无产率记录", "No yield on record"), "refs": []},
         # 危害（M6）：这一步的每个反应物、试剂和产物各一项。每项的字段：
         #   role 它在这一步里的角色（reactant / reagent / product）；key14、smiles、name 是哪个物质；
         #   h_codes 危险性说明的编码；statements 编码和中文（code、text）；pictograms 象形图编号；
@@ -460,7 +496,10 @@ def card_facts(card: dict[str, Any]) -> dict[str, Any]:
         # no_data 为 True 表示这个物质查不到危害数据（不能当成安全）
         "hazards": [
             {"source": "GHS", "substance": h["name"], "statements": [s["text"] for s in h["statements"]][:6],
-             "controlled": [f"{c['jurisdiction']} {c['list']} {c['category']}" for c in h["controlled"]],
+             # 清单名和类别是中文：经过 i18n.tr，要英文时（m11 / m12 把这份事实换成英文）整句才有对照
+             "controlled": [i18n.tr("{jurisdiction} {list} {category}", "{jurisdiction} {list} {category}",
+                                    jurisdiction=c["jurisdiction"], list=c["list"], category=c["category"])
+                            for c in h["controlled"]],
              "no_data": h["data_source"] == "none"}
             for h in card["hazards"]
         ],

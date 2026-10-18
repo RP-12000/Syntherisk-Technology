@@ -4,73 +4,113 @@
 
 [source.uspto]
 name = "USPTO 专利反应（Lowe，1976–2016，约 177 万条）"
+name_en = "USPTO patent reactions (Lowe, 1976–2016, about 1.77 million)"
 used_for = "文献先例、条件、产率（M5）"
+used_for_en = "Literature precedents, conditions, yields (M5)"
 license = "CC0"
 commercial_use = "可以；需要清洗"
+commercial_use_en = "Yes; needs cleaning"
 allowed = true
 notes = "产率是从专利文本自动提取的，只有约四成反应有产率，以原文为准。"
+notes_en = "Yields are extracted automatically from patent text; only about 40% of reactions have one, and the original text prevails."
 
 [source.ord]
 name = "Open Reaction Database"
 used_for = "文献先例（M5）"
+used_for_en = "Literature precedents (M5)"
 license = "CC BY-SA"
 commercial_use = "可以，要求相同方式共享；和自有数据混合前先做法律确认"
+commercial_use_en = "Yes, share-alike required; get legal confirmation before mixing with proprietary data"
 allowed = true
 
 [source.pubchem_ghs]
 name = "PubChem GHS 分类"
+name_en = "PubChem GHS classification"
 used_for = "毒性和危害（M6）"
+used_for_en = "Toxicity and hazards (M6)"
 license = "公开数据"
+license_en = "Public data"
 commercial_use = "可以，展示时注明来源"
+commercial_use_en = "Yes, with attribution when displayed"
 allowed = true
 
 [source.controlled_ca_us]
 name = "加拿大、美国管制清单"
+name_en = "Canadian and US control lists"
 used_for = "管制提示（M6）"
+used_for_en = "Control-list alerts (M6)"
 license = "政府公开信息"
+license_en = "Public government information"
 commercial_use = "可以，有机器可读版本"
+commercial_use_en = "Yes; machine-readable versions exist"
 allowed = true
 notes = "data/controlled_substances.csv 目前是手工整理的初稿（reviewed = 0），要对照官方清单复核。"
+notes_en = "data/controlled_substances.csv is currently a hand-compiled draft (reviewed = 0) and must be checked against the official lists."
 
 [source.controlled_cn_tw]
 name = "中国大陆、台湾管制清单"
+name_en = "Mainland China and Taiwan control lists"
 used_for = "管制提示（M6）"
+used_for_en = "Control-list alerts (M6)"
 license = "政府公开信息"
+license_en = "Public government information"
 commercial_use = "可以；需手工整理、定期复查"
+commercial_use_en = "Yes; needs manual compilation and periodic review"
 allowed = true
 notes = "大陆清单是手工整理的初稿；台湾清单还没有整理。"
+notes_en = "The mainland list is a hand-compiled draft; the Taiwan list has not been compiled yet."
 
 [source.zinc]
 name = "ZINC 在售目录"
+name_en = "ZINC purchasable catalog"
 used_for = "原料能不能买到（M4）"
+used_for_en = "Whether starting materials can be purchased (M4)"
 license = "见 ZINC 使用条款"
+license_en = "See the ZINC terms of use"
 commercial_use = "内部可用；正式商用前邮件确认"
+commercial_use_en = "Internal use OK; confirm by email before commercial use"
 allowed = true
 
 [source.seed]
 name = "内置常用试剂表（data/compounds.csv）"
+name_en = "Built-in common reagent table (data/compounds.csv)"
 used_for = "名称识别、危害分类初稿、在售判断的起步数据"
+used_for_en = "Seed data for name recognition, draft hazard classification and purchasability"
 license = "团队自行整理"
+license_en = "Compiled by the team"
 commercial_use = "可以；危害分类未经复核，以 PubChem GHS 和 SDS 为准"
+commercial_use_en = "Yes; hazard classifications are unreviewed, so PubChem GHS and the SDS prevail"
 allowed = true
 
 [source.demo]
 name = "内置演示路线（data/demo_routes）"
+name_en = "Built-in demo routes (data/demo_routes)"
 used_for = "没有接入 AiZynthFinder 时演示流水线"
+used_for_en = "Demonstrating the pipeline when AiZynthFinder is not connected"
 license = "团队自行整理的教科书路线"
+license_en = "Textbook routes compiled by the team"
 commercial_use = "仅用于演示和测试"
+commercial_use_en = "Demo and testing only"
 allowed = true
 
 [source.supplier_prices]
 name = "供应商价格和货期"
+name_en = "Supplier prices and lead times"
 used_for = "价格、货期（M4）"
+used_for_en = "Prices, lead times (M4)"
 license = "需要商务合作"
+license_en = "Requires a commercial agreement"
 commercial_use = "试用版前谈；在此之前价格一律显示“待询价”"
+commercial_use_en = "To be negotiated before the trial release; until then every price shows as “quote pending”"
 allowed = false
 
 [source.reaxys_scifinder]
 name = "学校的 Reaxys、SciFinder 账号"
+name_en = "University Reaxys and SciFinder accounts"
 used_for = "（不能用于产品）"
+used_for_en = "(not usable in the product)"
 license = "学术许可"
+license_en = "Academic license"
 commercial_use = "不可以：学术条款禁止商用和机器学习"
+commercial_use_en = "No: the academic terms prohibit commercial use and machine learning"
 allowed = false

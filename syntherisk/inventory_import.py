@@ -57,7 +57,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.external import is_cas_number
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m04_availability import InventoryService
@@ -133,7 +133,8 @@ def _read_rows(filename: str, content: bytes) -> list[list[str]]:
             # read_only=True：流式读取，大文件也不占多少内存；data_only=True：公式取算好的值，不取公式本身
             workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         except Exception as exc:  # noqa: BLE001
-            raise TableFormatError("这个 Excel 文件打不开") from exc
+            # 报错文字写成 i18n.tr("中文", "English")：返回的就是中文，同时登记了英文（见 syntherisk/i18n.py）
+            raise TableFormatError(i18n.tr("这个 Excel 文件打不开", "This Excel file could not be opened")) from exc
         sheet = workbook.worksheets[0]
         # values_only=True：直接给单元格的值，不给单元格对象
         return [[_cell(v) for v in row] for row in sheet.iter_rows(values_only=True)]
@@ -146,11 +147,12 @@ def _read_rows(filename: str, content: bytes) -> list[list[str]]:
             except UnicodeDecodeError:
                 continue
         else:
-            raise TableFormatError("这个文件的文字编码认不出来，请另存为 UTF-8 的 CSV")
+            raise TableFormatError(i18n.tr("这个文件的文字编码认不出来，请另存为 UTF-8 的 CSV",
+                                           "The file's text encoding is not recognized; please save it as a UTF-8 CSV"))
         sample = text[:2000]
         delimiter = "\t" if sample.count("\t") > sample.count(",") else ","
         return [[_cell(v) for v in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
-    raise TableFormatError("只支持 .xlsx 和 .csv 文件")
+    raise TableFormatError(i18n.tr("只支持 .xlsx 和 .csv 文件", "Only .xlsx and .csv files are supported"))
 
 
 def parse_table(filename: str, content: bytes) -> list[dict[str, Any]]:
@@ -187,7 +189,9 @@ def parse_table(filename: str, content: bytes) -> list[dict[str, Any]]:
             header_index, mapping = index, found
             break
     if header_index is None:
-        raise TableFormatError("没找到表头：第一行需要有“名称”“CAS”或“SMILES”中的至少一列")
+        raise TableFormatError(i18n.tr(
+            "没找到表头：第一行需要有“名称”“CAS”或“SMILES”中的至少一列",
+            "No header row found: the first row needs at least one of the columns “Name”, “CAS” or “SMILES”"))
 
     parsed: list[dict[str, Any]] = []
     # enumerate 的第二个参数是起始编号：表头是文件的第 header_index + 1 行，它下面一行就是第 header_index + 2 行
@@ -206,9 +210,10 @@ def parse_table(filename: str, content: bytes) -> list[dict[str, Any]]:
         record["row_number"] = number
         parsed.append(record)
         if len(parsed) > MAX_ROWS:
-            raise TableFormatError(f"一次最多导入 {MAX_ROWS} 行，请拆成几个文件")
+            raise TableFormatError(i18n.tr("一次最多导入 {n} 行，请拆成几个文件",
+                                           "At most {n} rows can be imported at once; please split the file", n=MAX_ROWS))
     if not parsed:
-        raise TableFormatError("表格里没有数据行")
+        raise TableFormatError(i18n.tr("表格里没有数据行", "The table has no data rows"))
     return parsed
 
 
@@ -383,17 +388,17 @@ def confirm_row(
         # canonical_smiles：解析并转成规范写法，读不出来返回 None
         canonical = chem.canonical_smiles(smiles or "")
         if canonical is None:
-            raise ValueError("给的结构读不出来")
+            raise ValueError(i18n.tr("给的结构读不出来", "The given structure could not be read"))
         final_smiles = canonical
     elif action == "confirm":
         final_smiles = proposal.get("smiles")  # 混合物可以没有结构，照样记进库存
     else:
-        raise ValueError(f"不认识的操作：{action}")
+        raise ValueError(i18n.tr("不认识的操作：{action}", "Unknown action: {action}", action=action))
     inventory = InventoryService(session, row.org_id, user_id)
     # 名字按这个先后取：用户这次给的 → 表格里的 → 系统猜的 → “未命名”。
     # CAS 号先用系统识别时得到的，没有再用表格里的。数量、位置、备注都取表格里的原样
     item, _created = inventory.upsert(
-        name=name or raw["name"] or proposal.get("name") or "未命名",
+        name=name or raw["name"] or proposal.get("name") or i18n.tr("未命名", "Unnamed"),
         cas=proposal.get("cas") or raw["cas"],
         smiles=final_smiles,
         quantity=raw["quantity"],
@@ -488,6 +493,11 @@ def row_view(row: models.InventoryImportRow) -> dict[str, Any]:
         本文件的 import_view；api/inventory.py 的 resolve_import_row。
     """
     proposal = row.payload.get("proposal") or {}
+    # reason 是识别时把几条疑点（notes）用分号连成的一句，存在数据库里。单条疑点有固定的英文对照；
+    # 连起来的那一句没有（识别可能是在后台任务或者更早的请求里做的），所以这里照原样再连一次，
+    # 让 i18n 在当前请求里记下它的英文。返回的中文不变
+    if len(proposal.get("notes") or []) > 1:
+        i18n.join(proposal["notes"], "；", "; ")
     return {
         "id": row.id,
         "row_number": row.row_number,

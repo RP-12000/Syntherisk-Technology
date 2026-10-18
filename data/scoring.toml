@@ -15,20 +15,32 @@ green = 0.05         # 绿色化学
 
 [dimension_labels]
 literature = "文献依据"
+literature_en = "Literature evidence"
 operation = "操作复杂度"
+operation_en = "Operational complexity"
 safety = "毒性与安全"
+safety_en = "Toxicity & safety"
 availability = "可得性与成本"
+availability_en = "Availability & cost"
 yield = "产率"
+yield_en = "Yield"
 green = "绿色化学"
+green_en = "Green chemistry"
 
 # 写进句子里用的短名字（“操作一项接近满分”比“操作复杂度接近满分”不容易读反）
 [dimension_short_labels]
 literature = "文献"
+literature_en = "Literature"
 operation = "操作"
+operation_en = "Operation"
 safety = "安全"
+safety_en = "Safety"
 availability = "可得性"
+availability_en = "Availability"
 yield = "产率"
+yield_en = "Yield"
 green = "绿色化学"
+green_en = "Green chemistry"
 
 # 路线分 = mean_coefficient × 各步平均分 + weakest_coefficient × 最弱一步
 [route]
@@ -86,32 +98,39 @@ max_precedents = 8                # 证据卡里最多列几条先例
 
 [evidence.levels.E1]
 label = "文献直接报道"
+label_en = "Directly reported in the literature"
 stars = 3
 band = [90, 100]
 [evidence.levels.E2]
 label = "高相似先例"
+label_en = "High-similarity precedent"
 stars = 2
 band = [70, 90]
 [evidence.levels.E3]
 label = "低相似先例"
+label_en = "Low-similarity precedent"
 stars = 1
 band = [40, 70]
 [evidence.levels.E4]
 label = "仅模型预测"
+label_en = "Model prediction only"
 stars = 0
 band = [0, 40]
 
 # ---------------------------------------------------------------- 复杂度三档（A7）
 [complexity.concise]
 label = "简洁"
+label_en = "Concise"
 max_steps = 3
 max_steps_without_precedent = 0
 [complexity.balanced]
 label = "平衡"
+label_en = "Balanced"
 max_steps = 6
 max_steps_without_precedent = 1
 [complexity.explore]
 label = "探索"
+label_en = "Explore"
 max_steps = 10
 max_steps_without_precedent = 99
 
@@ -187,6 +206,7 @@ g = 1000
 
 [weakest_link]
 suggestion = "建议先做 50 mg 小试验证第 {step} 步"
+suggestion_en = "Run a 50 mg trial first to verify step {step}"
 
 # 软偏好（比如“尽量不过柱色谱”）命中一次，在步骤分上扣这么多分
 [soft_preference]

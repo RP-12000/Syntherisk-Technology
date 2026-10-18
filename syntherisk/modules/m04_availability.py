@@ -65,15 +65,20 @@ from typing import Any, Iterable
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import ReferenceData, normalize_name
 from syntherisk.security import get_cipher
 
-# 三种可得性状态 -> 界面上显示的文字。键就是存进分析结果里的 status；评分（M10）按键判断，不按文字判断
-STATUS_LABELS = {"inventory": "库存", "purchasable": "可购买", "unavailable": "买不到"}
+# 三种可得性状态 -> 界面上显示的文字。键就是存进分析结果里的 status；评分（M10）按键判断，不按文字判断。
+# i18n.tr 返回的就是中文，同时登记了英文（请求带 ?lang=en 时换成英文，见 syntherisk/i18n.py）
+STATUS_LABELS = {
+    "inventory": i18n.tr("库存", "In stock"),
+    "purchasable": i18n.tr("可购买", "Purchasable"),
+    "unavailable": i18n.tr("买不到", "Unavailable"),
+}
 # 价格的显示文字。第一版没有供应商报价，所有价格都显示它；M10 路线汇总条里的“物料成本”也用这个常量
-PRICE_PENDING = "待询价"
+PRICE_PENDING = i18n.tr("待询价", "Quote pending")
 
 
 class InventoryService:
@@ -247,7 +252,8 @@ class InventoryService:
             # 把子结构解析成 RDKit 的查询分子；得到 None 说明 SMILES 和 SMARTS 两种读法都失败了
             pattern = chem.parse_query(substructure)
             if pattern is None:
-                raise ValueError("子结构读不出来，请检查画的结构或 SMILES")
+                raise ValueError(i18n.tr("子结构读不出来，请检查画的结构或 SMILES",
+                                         "Could not read the substructure; check the drawn structure or the SMILES"))
             # 逐条做子结构匹配（RDKit 的 HasSubstructMatch）；没有 SMILES 的条目不算匹配
             items = [i for i in items if i.payload.get("smiles") and chem.has_substructure(i.payload["smiles"], pattern)]
         return items

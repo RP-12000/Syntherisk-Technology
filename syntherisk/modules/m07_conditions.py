@@ -46,8 +46,55 @@ from __future__ import annotations
 
 from typing import Any
 
+from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import ConditionRule, ReferenceData
+
+# name_reaction() 起的全部反应名的英文。函数里返回的仍然是中文名（规则的 class_keywords 要在中文名里找关键词，
+# 结果里存的也是中文）；这里把“中文名 → 英文名”登记进 i18n，请求带 ?lang=en 时换成英文（见 syntherisk/i18n.py）。
+# name_reaction() 里加了新的名字，这里也要补一行，不然那个名字在英文界面上还是中文
+_REACTION_NAMES_EN = {
+    "Suzuki 偶联": "Suzuki coupling",
+    "Kolbe–Schmitt 羧基化": "Kolbe–Schmitt carboxylation",
+    "格氏羧基化": "Grignard carboxylation",
+    "羰基化": "Carbonylation",
+    "傅-克酰基化": "Friedel–Crafts acylation",
+    "Darzens 缩合": "Darzens condensation",
+    "羰基环氧化": "Carbonyl epoxidation",
+    "酰胺化": "Amidation",
+    "酯化（O-酰化）": "Esterification (O-acylation)",
+    "腈水解": "Nitrile hydrolysis",
+    "肟脱水成腈": "Oxime dehydration to nitrile",
+    "成肟": "Oxime formation",
+    "水解脱羧": "Hydrolysis and decarboxylation",
+    "环氧重排成醛": "Epoxide rearrangement to aldehyde",
+    "酯水解": "Ester hydrolysis",
+    "羰基还原": "Carbonyl reduction",
+    "氯代": "Chlorination",
+    "醇氧化": "Alcohol oxidation",
+    "硝基还原": "Nitro reduction",
+    "酰氯化": "Acyl chloride formation",
+    "酰氯还原成醛": "Acyl chloride reduction to aldehyde",
+    "氧化成羧酸": "Oxidation to carboxylic acid",
+    "酰胺水解": "Amide hydrolysis",
+    "酯或酰胺转化为醇": "Ester or amide reduction to alcohol",
+    "酯化（卤代烃取代）": "Esterification (alkyl halide substitution)",
+    "脱保护成酚": "Deprotection to phenol",
+    "Dakin 氧化": "Dakin oxidation",
+    "C–N 偶联": "C–N coupling",
+    "还原胺化": "Reductive amination",
+    "羰基烯化": "Carbonyl olefination",
+    "烯烃加氢": "Alkene hydrogenation",
+    "羰基还原成亚甲基": "Carbonyl reduction to methylene",
+    "烷基化": "Alkylation",
+}
+for _name_zh, _name_en in _REACTION_NAMES_EN.items():
+    i18n.register(_name_zh, _name_en)
+
+# 操作难度的三档（operation_level）。i18n.tr 返回的就是中文，同时登记了英文
+_LEVEL_SIMPLE = i18n.tr("简单", "Simple")
+_LEVEL_MEDIUM = i18n.tr("中等", "Moderate")
+_LEVEL_COMPLEX = i18n.tr("复杂", "Complex")
 
 # ---------------------------------------------------------------- 反应命名（启发式）
 
@@ -341,23 +388,29 @@ class ConditionEvaluator:
         ]
         # 什么都不知道、也什么都没命中：返回“未评估”，分数留空，M10 就不计操作这一维
         if not tags and not conditions_known:
-            return {"tags": [], "operation_score": None, "operation_level": None, "operation_label": "操作 未评估"}
+            return {"tags": [], "operation_score": None, "operation_level": None,
+                    "operation_label": i18n.tr("操作 未评估", "Operation: not assessed")}
         # 操作分 = 基础分（[operation] 的 base）减去每个标签的扣分，不低于 0
         score = max(0.0, float(self.config["base"]) - sum(tag["penalty"] for tag in tags))
         # 三档的分界线是 [operation] 的 simple_from 和 medium_from
         if score >= float(self.config["simple_from"]):
-            level = "简单"
+            level = _LEVEL_SIMPLE
         elif score >= float(self.config["medium_from"]):
-            level = "中等"
+            level = _LEVEL_MEDIUM
         else:
-            level = "复杂"
+            level = _LEVEL_COMPLEX
         # 扣分最多的那个标签写进显示文字里；一个标签都没有时 max() 走 default，得到 None
         main = max(tags, key=lambda tag: tag["penalty"], default=None)
         return {
             "tags": tags,
             "operation_score": round(score, 1),
             "operation_level": level,
-            "operation_label": f"操作 {level}" + (f" · {main['short']}" if main else ""),
+            # 整句经过 i18n.tr 才有英文；level 和标签的 short 各有自己的对照（short 的英文由 reference.py 登记）
+            "operation_label": (
+                i18n.tr("操作 {level} · {short}", "Operation: {level} · {short}", level=level, short=main["short"])
+                if main
+                else i18n.tr("操作 {level}", "Operation: {level}", level=level)
+            ),
         }
 
     def _matches(self, rule: ConditionRule, name: str, substances: list[str], text: str, temperature) -> bool:

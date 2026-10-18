@@ -59,8 +59,10 @@
         H 编码换成危害类别，带字母后缀的编码也认
     test_the_same_hazard_reported_at_two_levels_counts_once_at_the_stronger_one
         同一种危害报了两档时只算重的一档
-    test_yield_and_patent_number_parsing
-        从文字里读产率；给专利号和 DOI 拼原文链接
+    test_yield_parsing
+        从文字里读产率
+    test_precedent_links_use_formats_that_open_and_are_left_out_otherwise
+        专利号换成 Google Patents 能打开的写法；认不出来的文献号不给链接，不给打不开的链接
     test_empty_precedent_library_is_reported_as_not_assessed_rather_than_no_precedent
         先例库是空的时候说“没有评估”，不说“没有先例”
     test_same_reaction_in_the_library_is_e1_with_reported_yields
@@ -265,17 +267,13 @@ def test_the_same_hazard_reported_at_two_levels_counts_once_at_the_stronger_one(
     assert flags_for(["H301", "H351"]) == ["acute_toxic_3", "cmr_2"]
 
 
-def test_yield_and_patent_number_parsing():
-    """导入先例时的两个小工具：从文字里读出产率；给专利号或 DOI 拼出能点开的原文链接。
+def test_yield_parsing():
+    """导入先例时从文字里读出产率。
 
-    保证的行为（syntherisk/modules/m05_precedents.py）：
-      - parse_yield：认 “85%” “~78.5 %” 这样的写法；“57 to 60%” 这样的范围取中点；
-        没有数字、或者不在 0–100 之间的，返回 None（不拿一个不可信的数当产率）；
-      - document_url：有 DOI 用 doi.org 的地址；没有 DOI 的专利用 Google Patents 的地址。
-        USPTO 数据里的授权专利号在 US 后面补了 0（US04981995），Google Patents 的地址里没有这个 0，要去掉；
-        带字母后缀的申请号原样使用。
-    谁在用：导入先例库时（syntherisk/loaders.py）用 parse_yield 读产率那一列；
-    证据卡上每条先例的原文链接来自 document_url。
+    保证的行为（syntherisk/modules/m05_precedents.py 的 parse_yield）：
+      认 “85%” “~78.5 %” 这样的写法；“57 to 60%” 这样的范围取中点；
+      没有数字、或者不在 0–100 之间的，返回 None（不拿一个不可信的数当产率）。
+    谁在用：导入先例库时（syntherisk/loaders.py）用 parse_yield 读产率那一列。
     """
     assert parse_yield("85%") == 85
     assert parse_yield("~78.5 %") == 78.5
@@ -283,10 +281,49 @@ def test_yield_and_patent_number_parsing():
     assert parse_yield("57 to 60%") == 58.5
     # 空的、没有数字的（quantitative 是“定量”，没有给数）、超过 100 的，都不要
     assert parse_yield("") is None and parse_yield("quantitative") is None and parse_yield("150%") is None
+
+
+def test_precedent_links_use_formats_that_open_and_are_left_out_otherwise():
+    """先例的原文链接：专利号换成 Google Patents 能打开的写法；拼不出能打开的链接时不给链接。
+
+    保证的行为（syntherisk/modules/m05_precedents.py 的 document_url、google_patents_number）：
+      - USPTO 数据里的专利号去掉补位的 0 和末尾的类型代码（A、B1、B2、E1、H1……），再接到 Google Patents
+        的地址后面。下面每个号码代表先例库里的一种写法，换出来的链接都在 Google Patents 上实际打开过；
+      - 申请公开号（US 加 11 位数字）里的 0 不是补位，不能去掉；
+      - 有 DOI 的用 doi.org 的地址；DOI 前面带着的 https://doi.org/ 先去掉，地址里有特殊含义的字符转成 %XX；
+      - 认不出来的文献号（导入时编出来的 “来源-行号”、现编的 TEST-0001、美国以外的专利号）、
+        不像 DOI 的 DOI、没有 DOI 的期刊论文和数据集，都返回 None，界面上就不显示链接。
+    为什么重要：以前认不出来的专利号原样接在地址后面。2001 年以后授权的专利带着 B1、B2 这样的后缀，
+    再版专利和法定发明登记带着 RE、H，这些链接在 Google Patents 上全是 404，占 USPTO 先例的七成多。
+    """
+    # 键是先例库里的写法，值是 Google Patents 地址里的写法
+    patents = {
+        "US03930836": "US3930836",  # 2000 年以前的授权专利：只要去掉补位的 0（以前唯一能打开的一种）
+        "US06171520B2": "US6171520",  # 2001 年以后的授权专利。Google Patents 上这篇其实是 B1，带着 B2 就打不开
+        "US06168655A": "US6168655",  # 2001 年初的一批，数据里写的是 A，Google Patents 上也是 B1
+        "USRE037029E1": "USRE37029",  # 再版专利（2001 年以后）
+        "USRE028728": "USRE28728",  # 再版专利（2001 年以前）
+        "USH0000041": "USH41",  # 法定发明登记
+        "USH0001943H1": "USH1943",
+        "US20010000038A1": "US20010000038",  # 申请公开号：11 位数字里的 0 不是补位，留着
+        "US 6,171,520 B2": "US6171520",  # 带空格、逗号的写法也认
+    }
     # 三个参数依次是文献类型、文献号、DOI
-    assert document_url("patent", "US04981995", None) == "https://patents.google.com/patent/US4981995"
-    assert document_url("patent", "US20010000038A1", None) == "https://patents.google.com/patent/US20010000038A1"
+    for document_id, number in patents.items():
+        assert document_url("patent", document_id, None) == f"https://patents.google.com/patent/{number}"
+    # 认不出来的文献号不给链接：导入时编的 “来源-行号”、现编的测试文献号、欧洲专利号、空的
+    for document_id in ("uspto-17", "TEST-0001", "EP1234567A1", ""):
+        assert document_url("patent", document_id, None) is None
+    # DOI：直接用 doi.org 的地址；带着的前缀去掉；< 和 > 转成 %3C、%3E
     assert document_url("journal", "x", "10.1000/demo") == "https://doi.org/10.1000/demo"
+    assert document_url("journal", "x", "https://doi.org/10.1000/demo") == "https://doi.org/10.1000/demo"
+    assert document_url("journal", "x", "10.1002/(SICI)1:2<3::AID>4.0.CO;2-H") == (
+        "https://doi.org/10.1002/(SICI)1:2%3C3::AID%3E4.0.CO;2-H")
+    # 不像 DOI 的当作没有 DOI：期刊论文就没有链接了；专利还能按专利号拼
+    assert document_url("journal", "x", "not-a-doi") is None
+    assert document_url("patent", "US03930836", "not-a-doi") == "https://patents.google.com/patent/US3930836"
+    # 没有 DOI 的期刊论文、数据集不给链接（不管文献号长什么样）
+    assert document_url("journal", "x", None) is None and document_url("dataset", "US03930836", None) is None
 
 
 # ---------------------------------------------------------------- 证据等级

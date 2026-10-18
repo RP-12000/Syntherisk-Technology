@@ -70,6 +70,9 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import Descriptors, rdFingerprintGenerator, rdFMCS, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 
+# 给用户看的校验说明都写成 i18n.tr("中文", "English")：返回的就是中文，同时登记了英文（见 syntherisk/i18n.py）
+from syntherisk import i18n
+
 # 上面引入的 RDKit 各部分在这个文件里的用处：
 #   Chem                    解析 SMILES / MOL，分子、原子、键这几种对象，子结构匹配，InChIKey
 #   Descriptors             分子量
@@ -86,6 +89,20 @@ RDLogger.DisableLog("rdApp.*")
 # 这两个数是这里定的，不是 RDKit 的限制。
 MAX_SMILES_LENGTH = 2000
 MAX_HEAVY_ATOMS = 250
+
+# describe_mol() 给结构写的四句带数字的提示：(中文模板, 英文模板)。
+# 这四句会跟着目标分子存进分析记录（analyses.target），以后别的请求（甚至重启以后）再取出来显示，
+# 那时已经不在当初记对照的那个请求里了。所以不靠 i18n.tr 当场记，而是在导入本模块时把所有可能的数字
+# 都登记成固定对照：个数不会超过重原子数的上限，净电荷的绝对值也一样。一共一千多条，只占一点内存
+_MSG_STEREOCENTERS = ("{n} 个立体中心未指定，按外消旋处理", "Unspecified stereocenters: {n} (treated as racemic)")
+_MSG_OPEN_BONDS = ("{n} 个双键的顺反构型未指定", "Double bonds with unspecified E/Z geometry: {n}")
+_MSG_COMPONENTS = ("结构里有 {n} 个不相连的部分（盐或混合物）", "The structure has {n} disconnected parts (a salt or a mixture)")
+_MSG_CHARGE = ("分子带净电荷 {charge:+d}", "The molecule carries a net charge of {charge:+d}")
+for _n in range(1, MAX_HEAVY_ATOMS + 1):
+    for _zh, _en in (_MSG_STEREOCENTERS, _MSG_OPEN_BONDS, _MSG_COMPONENTS):
+        i18n.register(_zh.format(n=_n), _en.format(n=_n))
+    for _charge in (_n, -_n):
+        i18n.register(_MSG_CHARGE[0].format(charge=_charge), _MSG_CHARGE[1].format(charge=_charge))
 # 两种指纹的长度（位数）。打包成字节后分别是 2048 / 8 = 256 个字节和 1024 / 8 = 128 个字节，
 # 先例库 reaction_precedents 表的 fp_product、fp_diff 两列存的就是这些字节。
 # 改这两个数等于改了指纹的定义：库里已有的指纹长度对不上，要重新导入先例库才检索得到
@@ -205,11 +222,14 @@ def _problem_text(mol: Chem.Mol, problem) -> str:
     if kind == "AtomValenceException":
         # 价态超了：RDKit 的原子编号从 0 开始，给用户看的从 1 开始数，所以加 1
         atom = mol.GetAtomWithIdx(problem.GetAtomIdx())
-        return f"第 {atom.GetIdx() + 1} 个原子 {atom.GetSymbol()} 的成键数超出了它的化合价"
+        return i18n.tr("第 {n} 个原子 {symbol} 的成键数超出了它的化合价",
+                       "Atom {n} ({symbol}) has more bonds than its valence allows",
+                       n=atom.GetIdx() + 1, symbol=atom.GetSymbol())
     if kind in ("KekulizeException", "AtomKekulizeException"):
         # 凯库勒化失败：用小写字母写的芳香环，RDKit 没法给它排出一套合理的单键、双键
-        return "芳香环写法有误，无法确定单双键的位置"
-    return f"结构不合理：{problem.Message()}"
+        return i18n.tr("芳香环写法有误，无法确定单双键的位置",
+                       "The aromatic ring is written incorrectly; single and double bonds cannot be assigned")
+    return i18n.tr("结构不合理：{message}", "Invalid structure: {message}", message=problem.Message())
 
 
 def parse_mol(text: str, fmt: str = "auto") -> tuple[Chem.Mol | None, str, list[str], list[str]]:
@@ -229,7 +249,7 @@ def parse_mol(text: str, fmt: str = "auto") -> tuple[Chem.Mol | None, str, list[
     谁在用：validate_structure()。
     """
     if not text or not text.strip():
-        return None, "smiles", ["没有输入结构"], []
+        return None, "smiles", [i18n.tr("没有输入结构", "No structure was entered")], []
     fmt = detect_format(text) if fmt == "auto" else fmt
     warnings: list[str] = []
 
@@ -237,39 +257,44 @@ def parse_mol(text: str, fmt: str = "auto") -> tuple[Chem.Mol | None, str, list[
         # 只取空白隔开的第一段：SMILES 后面跟着的名字或者扩展信息不要
         smiles = text.strip().split()[0]
         if len(smiles) > MAX_SMILES_LENGTH:
-            return None, fmt, ["SMILES 太长，超出了支持的范围"], warnings
+            return None, fmt, [i18n.tr("SMILES 太长，超出了支持的范围", "The SMILES is too long to be supported")], warnings
         # 读两遍。第一遍是正常读法，RDKit 会顺带做化学校验（检查价态、芳香环等，RDKit 叫 sanitize）；
         # 读不出来时它返回 None，不抛异常。第二遍加 sanitize=False，只建原子和键、不做校验。
         # 两遍都是 None：写法本身不对。第二遍读得出来：写法没错，是化学上不合理，把 raw 留到下面查具体原因
         mol = Chem.MolFromSmiles(smiles)
         raw = None if mol is not None else Chem.MolFromSmiles(smiles, sanitize=False)
         if mol is None and raw is None:
-            return None, fmt, ["无法识别这段 SMILES，请检查括号、环闭合数字和元素符号"], warnings
+            return None, fmt, [i18n.tr("无法识别这段 SMILES，请检查括号、环闭合数字和元素符号",
+                                       "Could not read this SMILES; check the brackets, ring-closure digits and element symbols")], warnings
     elif fmt in ("mol", "sdf"):
         # SDF 文件是一个个 MOL 记录，每个记录后面有一行 $$$$。按它切开，去掉空白的段；只读第一个
         records = [r for r in text.split("$$$$") if r.strip()] if fmt == "sdf" else [text]
         if len(records) > 1:
-            warnings.append(f"文件里有 {len(records)} 个结构，只读入了第 1 个")
+            warnings.append(i18n.tr("文件里有 {n} 个结构，只读入了第 1 个",
+                                    "The file contains {n} structures; only the first was read", n=len(records)))
         block = records[0]  # 第一行是标题行，可以是空行，不能去掉
         # 和 SMILES 一样读两遍：先带化学校验，读不出来再不带校验读一遍
         mol = Chem.MolFromMolBlock(block)
         raw = None if mol is not None else Chem.MolFromMolBlock(block, sanitize=False)
         if mol is None and raw is None:
-            return None, fmt, ["无法读取这个 MOL / SDF 文件"], warnings
+            return None, fmt, [i18n.tr("无法读取这个 MOL / SDF 文件", "Could not read this MOL / SDF file")], warnings
     else:
-        return None, fmt, [f"不支持的结构格式：{fmt}"], warnings
+        return None, fmt, [i18n.tr("不支持的结构格式：{fmt}", "Unsupported structure format: {fmt}", fmt=fmt)], warnings
 
     if mol is None:
         # 走到这里：不带校验读得出来（raw），带校验读不出来。让 RDKit 把问题逐条列出来，翻译成中文；
         # 它一条也没列的话（列表是空的，or 后面的那句就顶上）给一句笼统的说明
         problems = Chem.DetectChemistryProblems(raw)
-        errors = [_problem_text(raw, p) for p in problems] or ["结构不合理，无法通过化学校验"]
+        errors = [_problem_text(raw, p) for p in problems] or [
+            i18n.tr("结构不合理，无法通过化学校验", "Invalid structure: it does not pass chemical validation")]
         return None, fmt, errors, warnings
     # 读出来了，再挡掉两种没法分析的：空结构、超过上限的大分子
     if mol.GetNumAtoms() == 0:
-        return None, fmt, ["结构是空的"], warnings
+        return None, fmt, [i18n.tr("结构是空的", "The structure is empty")], warnings
     if mol.GetNumHeavyAtoms() > MAX_HEAVY_ATOMS:
-        return None, fmt, [f"分子太大（超过 {MAX_HEAVY_ATOMS} 个重原子），暂不支持"], warnings
+        return None, fmt, [i18n.tr("分子太大（超过 {n} 个重原子），暂不支持",
+                                   "The molecule is too large (more than {n} heavy atoms) and is not supported yet",
+                                   n=MAX_HEAVY_ATOMS)], warnings
     return mol, fmt, [], warnings
 
 
@@ -333,17 +358,18 @@ def describe_mol(mol: Chem.Mol, fmt: str = "smiles", *, with_svg: bool = True) -
     )
     # 下面几条是提示，不影响 valid。立体化学的两条进 messages
     if unspecified:
-        info.messages.append(f"{unspecified} 个立体中心未指定，按外消旋处理")
+        info.messages.append(i18n.tr(*_MSG_STEREOCENTERS, n=unspecified))
     if open_bonds:
-        info.messages.append(f"{open_bonds} 个双键的顺反构型未指定")
+        info.messages.append(i18n.tr(*_MSG_OPEN_BONDS, n=open_bonds))
     # 其余三条进 warnings
     if components > 1:
-        info.warnings.append(f"结构里有 {components} 个不相连的部分（盐或混合物）")
+        info.warnings.append(i18n.tr(*_MSG_COMPONENTS, n=components))
     if charge != 0:
         # 格式 +d 让正数也带上加号：+1、-2
-        info.warnings.append(f"分子带净电荷 {charge:+d}")
+        info.warnings.append(i18n.tr(*_MSG_CHARGE, charge=charge))
     if not any(atom.GetSymbol() == "C" for atom in mol.GetAtoms()):
-        info.warnings.append("结构里没有碳原子，逆合成搜索可能找不到路线")
+        info.warnings.append(i18n.tr("结构里没有碳原子，逆合成搜索可能找不到路线",
+                                     "The structure contains no carbon atoms; the retrosynthesis search may find no routes"))
     if with_svg:
         info.svg = mol_to_svg(mol)
     return info

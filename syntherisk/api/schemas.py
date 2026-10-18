@@ -53,7 +53,28 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from syntherisk import i18n
 from syntherisk.constraints import Constraints
+
+
+def _invalid(zh: str, en: str) -> ValueError:
+    """造一个校验方法里要抛的 ValueError，说明是中文，并登记它的英文。
+
+    校验方法抛的 ValueError 会被 FastAPI 变成 422，说明出现在返回的 detail[].msg 里，
+    而且 Pydantic 会在前面加上 "Value error, "。返回英文时是按整句查对照的（见 syntherisk/i18n.py），
+    所以这里把带前缀的整句也登记一遍，英文请求拿到的就是 "Value error, <英文说明>"。
+
+    参数：
+        zh  中文说明（不带前缀）。
+        en  对应的英文说明。
+    返回：
+        ValueError(zh)。用法：raise _invalid("…", "…")。
+    谁在用：
+        本文件各个请求体的 model_validator 方法。
+    """
+    i18n.register(zh, en)
+    i18n.register(f"Value error, {zh}", f"Value error, {en}")
+    return ValueError(zh)
 
 # 邮箱格式的正则表达式，只做最粗的检查，逐段读是：
 #   ^          从字符串开头
@@ -220,7 +241,7 @@ class TargetInput(BaseModel):
         抛出：ValueError；FastAPI 会把它变成 422 响应。
         """
         if not (self.smiles or self.molblock):
-            raise ValueError("需要给出目标分子的 smiles 或 molblock")
+            raise _invalid("需要给出目标分子的 smiles 或 molblock", "Provide the target molecule as smiles or molblock")
         return self
 
 
@@ -281,9 +302,9 @@ class ExclusionCreate(BaseModel):
         抛出：ValueError；FastAPI 会把它变成 422 响应。
         """
         if self.type == "branch" and not (self.route_id and self.step_index):
-            raise ValueError("排除分支需要 route_id 和 step_index")
+            raise _invalid("排除分支需要 route_id 和 step_index", "Excluding a branch requires route_id and step_index")
         if self.type == "substance" and not self.smiles:
-            raise ValueError("排除试剂需要 smiles")
+            raise _invalid("排除试剂需要 smiles", "Excluding a reagent requires smiles")
         return self
 
 
@@ -439,7 +460,7 @@ class InventoryItemCreate(BaseModel):
         抛出：ValueError；FastAPI 会把它变成 422 响应。
         """
         if not (self.name or self.cas or self.smiles):
-            raise ValueError("名称、CAS 号、SMILES 至少要给一个")
+            raise _invalid("名称、CAS 号、SMILES 至少要给一个", "Provide at least one of name, CAS number or SMILES")
         return self
 
 

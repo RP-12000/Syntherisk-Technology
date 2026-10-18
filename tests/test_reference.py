@@ -44,6 +44,8 @@
         登记为不允许、或者根本没登记的数据来源不能用
     test_demo_routes_are_chemically_consistent
         演示路线每一条都能完整地整理出来，每一步都有名字
+    test_every_chinese_display_text_in_data_files_has_english
+        数据文件里每个会显示的中文都配了英文（中英切换用），英文键没有混进读出来的数据
 """
 
 import csv
@@ -350,3 +352,80 @@ def test_demo_routes_are_chemically_consistent(reference):
         for reaction in skeleton["reactions"].values():
             # 这两个常量是认不出反应类型时用的通用名字：“官能团转化”和“片段连接”
             assert reaction["name"] not in (UNNAMED_CONVERSION, UNNAMED_COUPLING)  # 演示路线的每一步都要有正经名字
+
+
+def test_every_chinese_display_text_in_data_files_has_english(reference):
+    """数据文件里每个会显示到界面上的中文都配了英文，而且英文只进了中英对照、没有混进读出来的数据里。
+
+    保证的行为：请求带 ?lang=en 时，后端把返回里的中文整句换成英文（syntherisk/i18n.py 的 localize）。
+    数据文件里的名称靠 reference.py 读表时登记的对照来换：
+      - TOML 文件和演示路线的 JSON：中文旁边写一个多了 _en 后缀的键（label / label_en、name / name_en……），
+        由 reference.py 的 register_english 登记，登记完把英文键拿掉；
+      - compounds.csv、controlled_substances.csv：name_zh、name_en 两列；管制清单的清单名、类别两列没有英文列，
+        它们的英文写在 reference.py 开头。
+    少配一个不会报错，只是英文界面上那一处还是中文，所以要靠这个测试发现。
+    怎么读：把几个文件原样读一遍，凡是带汉字的单个字符串（列表里的同义词、关键词是给程序匹配用的，不显示，不查），
+    用 i18n.en_of 查它的英文，结果里不能再有汉字。最后确认读进内存的数据里没有 _en 结尾的键
+    （scoring.toml 里带 {step} 的模板除外：代码要自己填参数，英文模板留着）。
+    reference 夹具读了 data/ 下的表，DemoEngine 读了演示路线，两者都读过以后对照才是全的。
+    """
+    import re
+    import tomllib
+
+    from syntherisk import i18n
+
+    han = re.compile(r"[一-鿿]")  # 有没有汉字
+    engine = DemoEngine(DATA / "demo_routes")
+    missing: list[str] = []
+
+    def check(where: str, text) -> None:
+        """text 带汉字、而查到的英文里还有汉字（或者根本没登记），就记一笔。"""
+        if isinstance(text, str) and han.search(text) and han.search(str(i18n.en_of(text))):
+            missing.append(f"{where}：{text}")
+
+    def walk(where: str, value) -> None:
+        """把读进来的 TOML / JSON 走一遍：字典一层层往下，列表里只接着看字典（不看列表里的字符串）。"""
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if isinstance(item, (dict, list)):
+                    walk(f"{where}.{key}", item)
+                elif not key.endswith("_en"):
+                    check(f"{where}.{key}", item)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    walk(where, item)
+
+    for name in ("vocabulary.toml", "scoring.toml", "condition_rules.toml", "data_sources.toml"):
+        walk(name, tomllib.loads((DATA / name).read_text(encoding="utf-8")))
+    for path in sorted((DATA / "demo_routes").glob("*.json")):
+        walk(path.name, json.loads(path.read_text(encoding="utf-8")))
+    for row in _rows("compounds.csv"):
+        check("compounds.csv", row["name_zh"])
+    for row in _rows("controlled_substances.csv"):
+        for column in ("name_zh", "list_name", "category"):
+            check(f"controlled_substances.csv 的 {column}", row[column])
+    assert not missing, missing
+
+    # 抽查几个：词表、规则、评分配置、试剂表、演示路线各一个
+    assert i18n.en_of("钯催化剂") == "Palladium catalysts"
+    assert i18n.en_of("需加压气体") == "Needs pressurized gas"
+    assert i18n.en_of("文献直接报道") == "Directly reported in the literature"
+    assert i18n.en_of("乙醚") == "diethyl ether"
+    assert i18n.en_of("格氏羧基化") == "Grignard carboxylation"
+
+    def english_keys(value) -> list[str]:
+        """读进内存的数据里所有 _en 结尾的键。"""
+        if isinstance(value, dict):
+            return [k for k in value if k.endswith("_en")] + [k for item in value.values() for k in english_keys(item)]
+        if isinstance(value, list):
+            return [k for item in value for k in english_keys(item)]
+        return []
+
+    # 英文键登记完就拿掉了：这些表有的原样返回给前端，中文的返回不能因此多出键来
+    assert english_keys(reference.vocabulary) == []
+    assert english_keys(reference.data_sources) == []
+    assert english_keys(reference.scoring) == ["suggestion_en"]
+    for path in sorted((DATA / "demo_routes").glob("*.json")):
+        target = json.loads(path.read_text(encoding="utf-8"))["target"]
+        assert english_keys(engine.search(SearchRequest(target_smiles=target["smiles"])).routes) == []

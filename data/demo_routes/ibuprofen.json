@@ -1,48 +1,48 @@
 {
-  "target": {"smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬"},
-  "source_note": "演示数据：布洛芬的三条教科书路线（实验室常见的格氏羧基化、Boots 工艺、BHC 工艺）。不是逆合成引擎搜出来的，条件说明是教科书层面的概述，不是文献检索结果。",
+  "target": {"smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬", "name_en": "ibuprofen"},
+  "source_note": "演示数据：布洛芬的三条教科书路线（实验室常见的格氏羧基化、Boots 工艺、BHC 工艺）。不是逆合成引擎搜出来的，条件说明是教科书层面的概述，不是文献检索结果。", "source_note_en": "Demo data: three textbook routes to ibuprofen (the common lab Grignard carboxylation, the Boots process and the BHC process). Not found by a retrosynthesis engine; the condition notes are textbook-level summaries, not literature search results.",
   "routes": [
     {
-      "name": "格氏羧基化",
+      "name": "格氏羧基化", "name_en": "Grignard carboxylation",
       "tree": {
-        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬",
+        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬", "name_en": "ibuprofen",
         "children": [{
           "type": "reaction",
           "metadata": {
-            "name": "格氏羧基化",
+            "name": "格氏羧基化", "name_en": "Grignard carboxylation",
             "reagents": ["[Mg]", "CCOCC"],
-            "conditions": "镁屑、无水乙醚制格氏试剂；通入干冰 CO₂；稀盐酸酸化"
+            "conditions": "镁屑、无水乙醚制格氏试剂；通入干冰 CO₂；稀盐酸酸化", "conditions_en": "Grignard reagent from magnesium turnings in anhydrous diethyl ether; quench with dry-ice CO₂; acidify with dilute hydrochloric acid"
           },
           "children": [
-            {"type": "mol", "smiles": "O=C=O", "name": "二氧化碳（干冰）"},
+            {"type": "mol", "smiles": "O=C=O", "name": "二氧化碳（干冰）", "name_en": "carbon dioxide"},
             {
-              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)Cl", "name": "氯代物",
+              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)Cl", "name": "氯代物", "name_en": "chloride intermediate",
               "children": [{
                 "type": "reaction",
-                "metadata": {"name": "氯代", "reagents": [], "conditions": "浓盐酸氯代"},
+                "metadata": {"name": "氯代", "name_en": "Chlorination", "reagents": [], "conditions": "浓盐酸氯代", "conditions_en": "Chlorination with conc. hydrochloric acid"},
                 "children": [
-                  {"type": "mol", "smiles": "Cl", "name": "盐酸"},
+                  {"type": "mol", "smiles": "Cl", "name": "盐酸", "name_en": "hydrochloric acid"},
                   {
-                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)O", "name": "醇中间体",
+                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)O", "name": "醇中间体", "name_en": "alcohol intermediate",
                     "children": [{
                       "type": "reaction",
                       "metadata": {
-                        "name": "羰基还原",
+                        "name": "羰基还原", "name_en": "Carbonyl reduction",
                         "reagents": ["[Na+].[BH4-]", "CO"],
-                        "conditions": "硼氢化钠，甲醇中还原"
+                        "conditions": "硼氢化钠，甲醇中还原", "conditions_en": "Sodium borohydride reduction in methanol"
                       },
                       "children": [{
-                        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮",
+                        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮", "name_en": "4'-isobutylacetophenone",
                         "children": [{
                           "type": "reaction",
                           "metadata": {
-                            "name": "傅-克酰基化",
+                            "name": "傅-克酰基化", "name_en": "Friedel–Crafts acylation",
                             "reagents": ["Cl[Al](Cl)Cl"],
-                            "conditions": "乙酸酐、三氯化铝催化，傅-克酰基化"
+                            "conditions": "乙酸酐、三氯化铝催化，傅-克酰基化", "conditions_en": "Friedel–Crafts acylation with acetic anhydride, aluminium chloride catalyst"
                           },
                           "children": [
-                            {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯"},
-                            {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+                            {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯", "name_en": "isobutylbenzene"},
+                            {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐", "name_en": "acetic anhydride"}
                           ]
                         }]
                       }]
@@ -58,58 +58,58 @@
     {
       "name": "Boots",
       "tree": {
-        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬",
+        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬", "name_en": "ibuprofen",
         "children": [{
           "type": "reaction",
-          "metadata": {"name": "腈水解", "reagents": ["OS(=O)(=O)O"], "conditions": "酸性条件下水解"},
+          "metadata": {"name": "腈水解", "name_en": "Nitrile hydrolysis", "reagents": ["OS(=O)(=O)O"], "conditions": "酸性条件下水解", "conditions_en": "Hydrolysis under acidic conditions"},
           "children": [
-            {"type": "mol", "smiles": "O", "name": "水"},
+            {"type": "mol", "smiles": "O", "name": "水", "name_en": "water"},
             {
-              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C#N", "name": "腈中间体",
+              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C#N", "name": "腈中间体", "name_en": "nitrile intermediate",
               "children": [{
                 "type": "reaction",
-                "metadata": {"name": "肟脱水成腈", "reagents": ["CC(=O)OC(C)=O"], "conditions": "乙酸酐脱水"},
+                "metadata": {"name": "肟脱水成腈", "name_en": "Oxime dehydration to nitrile", "reagents": ["CC(=O)OC(C)=O"], "conditions": "乙酸酐脱水", "conditions_en": "Dehydration with acetic anhydride"},
                 "children": [{
-                  "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C=NO", "name": "肟中间体",
+                  "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C=NO", "name": "肟中间体", "name_en": "oxime intermediate",
                   "children": [{
                     "type": "reaction",
-                    "metadata": {"name": "成肟", "reagents": [], "conditions": "盐酸羟胺成肟"},
+                    "metadata": {"name": "成肟", "name_en": "Oxime formation", "reagents": [], "conditions": "盐酸羟胺成肟", "conditions_en": "Oxime formation with hydroxylamine hydrochloride"},
                     "children": [
-                      {"type": "mol", "smiles": "NO.Cl", "name": "盐酸羟胺"},
+                      {"type": "mol", "smiles": "NO.Cl", "name": "盐酸羟胺", "name_en": "hydroxylamine hydrochloride"},
                       {
-                        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C=O", "name": "醛中间体",
+                        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C=O", "name": "醛中间体", "name_en": "aldehyde intermediate",
                         "children": [{
                           "type": "reaction",
                           "metadata": {
-                            "name": "水解脱羧",
+                            "name": "水解脱羧", "name_en": "Hydrolysis and decarboxylation",
                             "reagents": ["[Na+].[OH-]", "Cl"],
-                            "conditions": "碱性水解后酸化脱羧"
+                            "conditions": "碱性水解后酸化脱羧", "conditions_en": "Basic hydrolysis, then acidification and decarboxylation"
                           },
                           "children": [
-                            {"type": "mol", "smiles": "O", "name": "水"},
+                            {"type": "mol", "smiles": "O", "name": "水", "name_en": "water"},
                             {
-                              "type": "mol", "smiles": "CCOC(=O)C1OC1(C)c1ccc(CC(C)C)cc1", "name": "环氧酯中间体",
+                              "type": "mol", "smiles": "CCOC(=O)C1OC1(C)c1ccc(CC(C)C)cc1", "name": "环氧酯中间体", "name_en": "glycidic ester intermediate",
                               "children": [{
                                 "type": "reaction",
                                 "metadata": {
-                                  "name": "Darzens 缩合",
+                                  "name": "Darzens 缩合", "name_en": "Darzens condensation",
                                   "reagents": ["CC[O-].[Na+]"],
-                                  "conditions": "氯乙酸乙酯、乙醇钠，Darzens 缩合"
+                                  "conditions": "氯乙酸乙酯、乙醇钠，Darzens 缩合", "conditions_en": "Darzens condensation with ethyl chloroacetate and sodium ethoxide"
                                 },
                                 "children": [
-                                  {"type": "mol", "smiles": "CCOC(=O)CCl", "name": "氯乙酸乙酯"},
+                                  {"type": "mol", "smiles": "CCOC(=O)CCl", "name": "氯乙酸乙酯", "name_en": "ethyl chloroacetate"},
                                   {
-                                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮",
+                                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮", "name_en": "4'-isobutylacetophenone",
                                     "children": [{
                                       "type": "reaction",
                                       "metadata": {
-                                        "name": "傅-克酰基化",
+                                        "name": "傅-克酰基化", "name_en": "Friedel–Crafts acylation",
                                         "reagents": ["Cl[Al](Cl)Cl"],
-                                        "conditions": "乙酸酐、三氯化铝催化，傅-克酰基化"
+                                        "conditions": "乙酸酐、三氯化铝催化，傅-克酰基化", "conditions_en": "Friedel–Crafts acylation with acetic anhydride, aluminium chloride catalyst"
                                       },
                                       "children": [
-                                        {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯"},
-                                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+                                        {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯", "name_en": "isobutylbenzene"},
+                                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐", "name_en": "acetic anhydride"}
                                       ]
                                     }]
                                   }
@@ -131,35 +131,35 @@
     {
       "name": "BHC",
       "tree": {
-        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬",
+        "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", "name": "布洛芬", "name_en": "ibuprofen",
         "children": [{
           "type": "reaction",
           "metadata": {
-            "name": "钯催化羰基化",
+            "name": "钯催化羰基化", "name_en": "Palladium-catalyzed carbonylation",
             "reagents": ["[Pd+2].[Cl-].[Cl-].c1ccc(cc1)P(c1ccccc1)c1ccccc1.c1ccc(cc1)P(c1ccccc1)c1ccccc1", "Cl"],
-            "conditions": "钯催化羰基化，加压一氧化碳"
+            "conditions": "钯催化羰基化，加压一氧化碳", "conditions_en": "Palladium-catalyzed carbonylation under pressurized carbon monoxide"
           },
           "children": [
-            {"type": "mol", "smiles": "[C-]#[O+]", "name": "一氧化碳"},
+            {"type": "mol", "smiles": "[C-]#[O+]", "name": "一氧化碳", "name_en": "carbon monoxide"},
             {
-              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)O", "name": "醇中间体",
+              "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)O", "name": "醇中间体", "name_en": "alcohol intermediate",
               "children": [{
                 "type": "reaction",
-                "metadata": {"name": "催化加氢", "reagents": ["[Ni]"], "conditions": "雷尼镍催化加氢"},
+                "metadata": {"name": "催化加氢", "name_en": "Catalytic hydrogenation", "reagents": ["[Ni]"], "conditions": "雷尼镍催化加氢", "conditions_en": "Raney nickel-catalyzed hydrogenation"},
                 "children": [
-                  {"type": "mol", "smiles": "[H][H]", "name": "氢气"},
+                  {"type": "mol", "smiles": "[H][H]", "name": "氢气", "name_en": "hydrogen"},
                   {
-                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮",
+                    "type": "mol", "smiles": "CC(C)Cc1ccc(cc1)C(C)=O", "name": "4-异丁基苯乙酮", "name_en": "4'-isobutylacetophenone",
                     "children": [{
                       "type": "reaction",
                       "metadata": {
-                        "name": "傅-克酰基化（HF）",
+                        "name": "傅-克酰基化（HF）", "name_en": "Friedel–Crafts acylation (HF)",
                         "reagents": ["F"],
-                        "conditions": "氟化氢既作催化剂又作溶剂"
+                        "conditions": "氟化氢既作催化剂又作溶剂", "conditions_en": "Hydrogen fluoride as both catalyst and solvent"
                       },
                       "children": [
-                        {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯"},
-                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐"}
+                        {"type": "mol", "smiles": "CC(C)Cc1ccccc1", "name": "异丁基苯", "name_en": "isobutylbenzene"},
+                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "name": "乙酸酐", "name_en": "acetic anhydride"}
                       ]
                     }]
                   }

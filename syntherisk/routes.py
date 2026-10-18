@@ -75,6 +75,7 @@ import hashlib
 from typing import Any, Iterator
 
 # chem：后端里和化学结构有关的计算都在 m01_structure 里，各个文件都给它起这个别名
+from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m03_retrosynthesis import SearchResult
 from syntherisk.modules.m07_conditions import name_reaction
@@ -84,8 +85,9 @@ from syntherisk.reference import ReferenceData
 # 认不出反应类型时的名字：至少说清楚是一个分子自己变，还是两个片段接起来
 # UNNAMED_CONVERSION 用在只有一个反应物的步骤上，UNNAMED_COUPLING 用在有两个或更多反应物的步骤上
 # （见 _Builder._reaction）。tests/test_reference.py 用它们检查演示路线的每一步都有正经名字
-UNNAMED_CONVERSION = "官能团转化"
-UNNAMED_COUPLING = "片段连接"
+# i18n.tr 返回的就是中文，同时登记了英文（请求带 ?lang=en 时换成英文，见 syntherisk/i18n.py）
+UNNAMED_CONVERSION = i18n.tr("官能团转化", "Functional group interconversion")
+UNNAMED_COUPLING = i18n.tr("片段连接", "Fragment coupling")
 
 
 class RouteBuildError(ValueError):
@@ -184,7 +186,8 @@ class _Builder:
         # mol_record 用 RDKit 解析 SMILES，给出规范 SMILES、InChIKey、分子式、分子量；读不出来返回 None
         record = chem.mol_record(smiles)
         if record is None:
-            raise RouteBuildError(f"路线里有读不出来的结构：{smiles}")
+            raise RouteBuildError(i18n.tr("路线里有读不出来的结构：{smiles}",
+                                          "The route contains a structure that could not be read: {smiles}", smiles=smiles))
         # 用 key14 认分子：同一个分子的不同 SMILES 写法、不同的立体异构体都落到同一条上，
         # 表里留的是先登记的那个写法
         entry = self.molecules.get(record.key14)
@@ -249,7 +252,7 @@ class _Builder:
         # 先把各个反应物的子树转好（递归），再登记这一步反应
         children = [self.convert(child) for child in reaction_node.get("children") or [] if not _is_reaction(child)]
         if not children:
-            raise RouteBuildError("路线里有一步没有反应物")
+            raise RouteBuildError(i18n.tr("路线里有一步没有反应物", "A step in the route has no reactants"))
         step_key = self._reaction(entry, children, reaction_node.get("metadata") or {})
         out["children"] = [{"type": "reaction", "step_key": step_key, "children": children}]
         return out
@@ -283,7 +286,7 @@ class _Builder:
         # 先例库的 reaction_key 一列是同一个函数算的；M5 找“文献直接报道”（E1）时比的就是这个编号
         rxn_key = chem.reaction_key(reactant_smiles, product["smiles"])
         if rxn_key is None:
-            raise RouteBuildError("路线里有一步算不出反应编号")
+            raise RouteBuildError(i18n.tr("路线里有一步算不出反应编号", "A reaction key could not be computed for a step in the route"))
         # 同样的反应物和产物、试剂不同（比如 AlCl3 和 HF 催化的傅-克反应），算两步不同的做法
         signature = rxn_key + "|" + ",".join(sorted(reagent_keys))
         # 步骤编号取 SHA-1 的前 16 位十六进制字符。它只和反应物、产物、试剂有关，
@@ -451,10 +454,13 @@ def build_skeleton(search: SearchResult, target_smiles: str, reference: Referenc
             tree = builder.convert(raw["tree"])
         except (RouteBuildError, KeyError) as exc:
             # KeyError：字典里缺 "tree"、"smiles" 这类必有的键。坏的只是这一条，其余路线照常处理
-            warnings.append(f"跳过了一条读不出来的路线：{exc}")
+            # 原因先转成字符串再当参数：它是上面 RouteBuildError 里的一句（有英文对照），英文句子里会自动换上
+            warnings.append(i18n.tr("跳过了一条读不出来的路线：{reason}",
+                                    "Skipped a route that could not be read: {reason}", reason=str(exc)))
             continue
         if tree["key14"] != target["key14"]:
-            warnings.append("跳过了一条终点不是目标分子的路线")
+            warnings.append(i18n.tr("跳过了一条终点不是目标分子的路线",
+                                    "Skipped a route that does not end at the target molecule"))
             continue
         # 给这条路线的每一步编上实验顺序的序号（从 1 开始），写在路线树的反应节点上，
         # 同时按这个顺序收集步骤编号。iter_reaction_nodes 给出的就是“先原料、后产物”的顺序

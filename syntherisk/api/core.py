@@ -64,7 +64,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.api import schemas
 from syntherisk.api.deps import Principal, get_ctx, get_db, get_principal, load_project, require_admin
 from syntherisk.api.views import analysis_list_item, iso
@@ -137,16 +137,17 @@ def register(body: schemas.RegisterRequest, db: Session = Depends(get_db), ctx: 
     email = body.email.strip().lower()
     # db.scalar(查询)：只取结果第一行的第一列。这里查的是 id，查不到就是 None
     if db.scalar(select(models.User.id).where(models.User.email == email)):
-        raise HTTPException(status.HTTP_409_CONFLICT, "这个邮箱已经注册过了")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这个邮箱已经注册过了", "This email is already registered"))
     # 建课题组和用户。密码不存原文，存的是 scrypt 算出来的哈希值（security.hash_password）
     org = models.Organization(name=body.org_name.strip(), settings={})
     user = models.User(email=email, display_name=body.display_name.strip(), password_hash=hash_password(body.password))
     db.add_all([org, user])
     # flush：把上面两行先发给数据库（还没提交）。这一步之后 org.id 和 user.id 才有值，下面两行要用
     db.flush()
-    # 成员关系：这个人是这个课题组的 owner。再建一个“默认项目”：每次分析都必须挂在某个项目下面
+    # 成员关系：这个人是这个课题组的 owner。再建一个“默认项目”：每次分析都必须挂在某个项目下面。
+    # 项目名存的是中文；i18n.tr 顺手登记它的英文，英文界面上显示成 Default project
     db.add(models.Membership(org_id=org.id, user_id=user.id, role="owner"))
-    db.add(models.Project(org_id=org.id, name="默认项目", created_by=user.id))
+    db.add(models.Project(org_id=org.id, name=i18n.tr("默认项目", "Default project"), created_by=user.id))
     db.commit()
     return _token_response(ctx, user, org, "owner")
 
@@ -166,12 +167,12 @@ def login(body: schemas.LoginRequest, db: Session = Depends(get_db), ctx: AppCon
     # 邮箱转成小写去查。账号不存在、被停用、密码不对，三种情况返回同一句话，不透露是哪一种
     user = db.scalars(select(models.User).where(models.User.email == body.email.strip().lower())).first()
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "邮箱或密码不对")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, i18n.tr("邮箱或密码不对", "Incorrect email or password"))
     # 取这个人所在的课题组（取查到的第一条成员关系）。
     # 注册和加成员都不接受已经注册过的邮箱，所以通过这些接口建的账号只会属于一个课题组
     membership = db.scalars(select(models.Membership).where(models.Membership.user_id == user.id)).first()
     if membership is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "这个账号不属于任何课题组")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, i18n.tr("这个账号不属于任何课题组", "This account does not belong to any research group"))
     return _token_response(ctx, user, db.get(models.Organization, membership.org_id), membership.role)
 
 
@@ -232,7 +233,7 @@ def add_member(body: schemas.MemberCreate, principal: Principal = Depends(requir
     # 往 users、memberships 两张表各写一行；和注册的区别是不建新课题组，而是加入管理员所在的这个
     email = body.email.strip().lower()
     if db.scalar(select(models.User.id).where(models.User.email == email)):
-        raise HTTPException(status.HTTP_409_CONFLICT, "这个邮箱已经注册过了")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这个邮箱已经注册过了", "This email is already registered"))
     user = models.User(email=email, display_name=body.display_name.strip(), password_hash=hash_password(body.password))
     db.add(user)
     # flush 以后 user.id 才有值，建成员关系要用
@@ -367,7 +368,7 @@ def _load_draft(db: Session, principal: Principal, draft_id: str) -> models.Draf
     draft = db.get(models.Draft, draft_id)
     # 比项目、分析多查一项 user_id：不光要是本课题组的，还要是本人的
     if draft is None or draft.org_id != principal.org_id or draft.user_id != principal.user_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这份草稿")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这份草稿", "Draft not found"))
     return draft
 
 
@@ -497,14 +498,17 @@ def save_preset(body: schemas.PresetSave, principal: Principal = Depends(get_pri
             payload = Constraints.model_validate(body.payload).model_dump()
         except ValidationError as exc:
             # exc.errors() 是出错字段的列表，这里只把第一条的说明告诉前端
-            raise HTTPException(422, f"约束预设的内容不对：{exc.errors()[0]['msg']}") from exc
+            raise HTTPException(422, i18n.tr("约束预设的内容不对：{msg}", "Invalid constraint preset: {msg}",
+                                             msg=exc.errors()[0]["msg"])) from exc
     else:
         # 权重预设。unknown：不在六个维度（DIMENSIONS）里的键，用集合相减求出来
         unknown = set(body.payload) - set(DIMENSIONS)
         values = list(body.payload.values())
         # 不合格的情况：有不认识的键；一项都没有；有值不是数字或者是负数；加起来不大于 0
         if unknown or not values or any(not isinstance(v, (int, float)) or v < 0 for v in values) or sum(values) <= 0:
-            raise HTTPException(422, f"权重预设只能包含这几项，且不能为负：{'、'.join(DIMENSIONS)}")
+            raise HTTPException(422, i18n.tr("权重预设只能包含这几项，且不能为负：{dims}",
+                                             "A weight preset may only contain these keys, none negative: {dims}",
+                                             dims=i18n.join(DIMENSIONS)))
         # 统一存成小数。不要求加起来等于 1：评分时按权重之间的比例算（m10_scoring.weighted_score）
         payload = {key: float(value) for key, value in body.payload.items()}
 
@@ -540,7 +544,7 @@ def delete_preset(preset_id: str, principal: Principal = Depends(get_principal),
     """
     preset = db.get(models.Preset, preset_id)
     if preset is None or preset.org_id != principal.org_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这个预设")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这个预设", "Preset not found"))
     db.delete(preset)
     db.commit()
 
@@ -583,15 +587,26 @@ def scoring_config(ctx: AppContext = Depends(get_ctx), _: Principal = Depends(ge
         "soft_preference_penalty": scoring["soft_preference"]["penalty"],
         # 三条公式的文字版。真正的计算在 modules/m10_scoring.py，前端按同样的公式自己重算
         "formula": {
-            "step": "步骤分 = Σ(维度分 × 权重) ÷ Σ(有数据的维度的权重) − soft_penalty；维度分为 null 表示没有数据，不计入",
-            "route": "路线分 = mean_coefficient × 各步平均分 + weakest_coefficient × 最弱一步",
-            "ranking": "按路线分从高到低；除“探索”档外，低置信度路线不排在高置信度路线前面",
+            "step": i18n.tr(
+                "步骤分 = Σ(维度分 × 权重) ÷ Σ(有数据的维度的权重) − soft_penalty；维度分为 null 表示没有数据，不计入",
+                "Step score = Σ(dimension score × weight) ÷ Σ(weights of dimensions with data) − soft_penalty; "
+                "a null dimension score means no data and is left out"),
+            "route": i18n.tr("路线分 = mean_coefficient × 各步平均分 + weakest_coefficient × 最弱一步",
+                             "Route score = mean_coefficient × mean step score + weakest_coefficient × weakest step"),
+            # 档位名“探索”取自 scoring.toml，当参数拼进去：英文句子里用的就是词表给这一档登记的英文
+            "ranking": i18n.tr(
+                "按路线分从高到低；除“{tier}”档外，低置信度路线不排在高置信度路线前面",
+                "Sorted by route score, highest first; except in the “{tier}” tier, "
+                "a low-confidence route never ranks above a high-confidence one",
+                tier=scoring["complexity"]["explore"]["label"]),
         },
         # 下面三项原样取自 scoring.toml 的 [evidence.levels.*]、[complexity.*]、[confidence] 三处
         "evidence_levels": scoring["evidence"]["levels"],
         "complexity": scoring["complexity"],
         "confidence": scoring["confidence"],
-        "status": "权重和系数都是初稿，待用历史案例回测和化学家盲评校准",
+        "status": i18n.tr("权重和系数都是初稿，待用历史案例回测和化学家盲评校准",
+                          "Weights and coefficients are a first draft, pending calibration by back-testing on "
+                          "historical cases and blind review by chemists"),
     }
 
 

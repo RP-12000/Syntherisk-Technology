@@ -98,7 +98,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.api import schemas
 from syntherisk.api.deps import (
     Principal, authenticate, get_ctx, get_db, get_principal, load_analysis, load_finished_analysis,
@@ -141,7 +141,7 @@ def _route_or_404(result: dict[str, Any], route_id: str) -> dict[str, Any]:
     """
     route = find_route(result, route_id)
     if route is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这条路线")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这条路线", "Route not found"))
     return route
 
 
@@ -166,7 +166,7 @@ def _card(ctx: AppContext, result: dict[str, Any], route_id: str, step_index: in
     route = _route_or_404(result, route_id)
     # Python 的连续比较：等价于 step_index >= 1 and step_index <= 这条路线的步数
     if not 1 <= step_index <= len(route["steps"]):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "这条路线没有这一步")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("这条路线没有这一步", "This route has no such step"))
     return route, build_card(result, route, step_index, ctx.reference, with_svg=svg)
 
 
@@ -198,11 +198,11 @@ def create_analysis(body: schemas.AnalysisCreate, principal: Principal = Depends
         info = chem.validate_structure(body.target.molblock, "mol", with_svg=False)
     if not info.valid:
         # 这里的 detail 是一个字典：errors 是 m01_structure 给出的具体原因（中文句子的列表）
-        raise HTTPException(422, {"message": "目标分子的结构有问题", "errors": info.errors})
+        raise HTTPException(422, {"message": i18n.tr("目标分子的结构有问题", "The target structure is invalid"), "errors": info.errors})
     # 起始骨架（A5）随约束一起提交；这里只确认每一个都读得出来
     for material in body.constraints.starting_materials:
         if chem.mol_record(material.smiles) is None:
-            raise HTTPException(422, "起始骨架的结构读不出来")
+            raise HTTPException(422, i18n.tr("起始骨架的结构读不出来", "A starting scaffold structure could not be read"))
 
     analysis = models.Analysis(
         org_id=principal.org_id,
@@ -211,6 +211,8 @@ def create_analysis(body: schemas.AnalysisCreate, principal: Principal = Depends
         status="queued",
         # 八个阶段的初始状态，全部是 pending（pipeline.fresh_stages）
         stages=fresh_stages(),
+        # 提交时界面用的语言：大模型写说明时用它
+        language=i18n.current_lang(),
         # 目标分子：存校验以后的规范 SMILES 和算出来的基本信息，后台任务直接用
         target={
             "smiles": info.smiles,
@@ -220,6 +222,10 @@ def create_analysis(body: schemas.AnalysisCreate, principal: Principal = Depends
             "formula": info.formula,
             "mol_weight": info.mol_weight,
             "messages": info.messages,
+            # 立体化学提示的英文。这几句带数字（“1 个立体中心未指定……”），对照只记在这一次请求里，
+            # 而 target 不在 result 里、用不上 result["_en"]，所以把英文直接存在旁边：
+            # 返回时 views._target_view 按语言处理（中文去掉这一项，英文用它顶替 messages）
+            "messages_en": [i18n.en_of(message) for message in info.messages],
         },
         # 约束原样存成字典；后台任务的第 1 阶段再把它合并成实际执行的那一份
         constraints=body.constraints.model_dump(),
@@ -330,7 +336,7 @@ def retry_analysis(analysis_id: str, principal: Principal = Depends(get_principa
     """
     analysis = load_analysis(db, principal, analysis_id)
     if analysis.status not in ("failed", "cancelled"):
-        raise HTTPException(status.HTTP_409_CONFLICT, "只有失败或已取消的分析可以重跑")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("只有失败或已取消的分析可以重跑", "Only failed or cancelled analyses can be rerun"))
     # 把状态改回“排队中”，清掉上一次留下的取消标记、尝试次数、错误信息和各阶段的进度。
     # 上一次留在 result 里的内容这里不清；后台任务跑完第 2 阶段（搜索）时会把它整个换成新的
     analysis.status = "queued"
@@ -464,6 +470,9 @@ async def stream_events(analysis_id: str, request: Request, access_token: str | 
         # 重放一遍，前端一收到上一轮的 done 就以为这次分析结束了
         cursor = await run_in_threadpool(_round_start, ctx, analysis_id)
 
+    # 进度说明要哪种语言：?lang=en 或者请求头 X-Language（EventSource 带不了请求头，所以一般用查询参数）
+    lang = i18n.normalize_lang(request.query_params.get("lang") or request.headers.get("x-language"))
+
     async def generate():
         """异步生成器：一段一段地产出要发给前端的文本，StreamingResponse 边产出边发送。
 
@@ -478,9 +487,12 @@ async def stream_events(analysis_id: str, request: Request, access_token: str | 
             events, current = await run_in_threadpool(_events_after, ctx, analysis_id, cursor)
             for event_id, event_type, payload in events:
                 cursor = event_id
+                # 英文：换成英文的进度说明；中文：去掉事件里附带的英文（message_en），和以前的格式一样
+                shown = (i18n.localize(payload, lang) if lang == "en"
+                         else {k: v for k, v in payload.items() if not k.endswith("_en")})
                 # SSE 的格式：每条事件是几行 “字段: 值”，以一个空行结束。
                 # ensure_ascii=False 让中文原样输出，不变成 \uXXXX
-                yield f"id: {event_id}\nevent: {event_type}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                yield f"id: {event_id}\nevent: {event_type}\ndata: {json.dumps(shown, ensure_ascii=False)}\n\n"
             if not events:
                 # 没有新事件了，分析也到了结束状态：发一个 end，推送结束。
                 # 先把事件发完、再看状态，所以最后那条 done 事件一定在 end 之前发出去
@@ -527,7 +539,7 @@ def get_preliminary(analysis_id: str, svg: bool = False, principal: Principal = 
     analysis = load_analysis(db, principal, analysis_id)
     # result 是 None（还没搜完）或者 routes 是空列表（没搜到路线），都走这个 409
     if not (analysis.result or {}).get("routes"):
-        raise HTTPException(status.HTTP_409_CONFLICT, "逆合成搜索还没完成，暂时没有初步结果")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("逆合成搜索还没完成，暂时没有初步结果", "The retrosynthesis search has not finished; no preliminary results yet"))
     return preliminary_view(analysis.result, with_svg=svg)
 
 
@@ -796,7 +808,7 @@ def add_exclusion(analysis_id: str, body: schemas.ExclusionCreate, principal: Pr
         route = _route_or_404(result, body.route_id)
         # step_index 不小于 1 已经由 ExclusionCreate 保证，这里只查上限
         if body.step_index > len(route["step_keys"]):
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "这条路线没有这一步")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("这条路线没有这一步", "This route has no such step"))
         # step_keys 按实验顺序排，第 1 步在下标 0
         step_key = route["step_keys"][body.step_index - 1]
         exclusion = {"type": "branch", "step_key": step_key, "name": result["reactions"][step_key]["name"]}
@@ -806,7 +818,7 @@ def add_exclusion(analysis_id: str, body: schemas.ExclusionCreate, principal: Pr
         # 排除一种试剂：按结构认（key14 是 InChIKey 的前 14 位），同一个物质不管 SMILES 怎么写都算同一个
         record = chem.mol_record(body.smiles)
         if record is None:
-            raise HTTPException(422, "结构读不出来")
+            raise HTTPException(422, i18n.tr("结构读不出来", "The structure could not be read"))
         # 显示用的名字：分析结果里有就用结果里的，其次是内置试剂表里的，都没有就用分子式
         known = result["molecules"].get(record.key14) or {}
         name = known.get("name") or ctx.reference.compounds.name_for(record.smiles) or record.formula
@@ -816,7 +828,7 @@ def add_exclusion(analysis_id: str, body: schemas.ExclusionCreate, principal: Pr
     existing = list(analysis.user_exclusions or [])
     # 已有的排除记录里，分支带 step_key、试剂带 key14；和这次的 identity 相同就是重复排除
     if any((e["type"], e.get("step_key") or e.get("key14")) == identity for e in existing):
-        raise HTTPException(status.HTTP_409_CONFLICT, "已经排除过了")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("已经排除过了", "Already excluded"))
     # 给这条记录一个编号（随机的 32 位十六进制串，取前 10 位）和时间；撤销时按这个编号找
     exclusion.update({"id": models.new_id()[:10], "created_at": models.utcnow().isoformat()})
     # 排除之前有没有可选的路线：下面用它判断“是不是这一次排除把路线排光了”
@@ -863,7 +875,7 @@ def remove_exclusion(analysis_id: str, exclusion_id: str, principal: Principal =
     # 留下编号不是 exclusion_id 的那些；长度没变，说明根本没有这条记录
     remaining = [e for e in analysis.user_exclusions or [] if e["id"] != exclusion_id]
     if len(remaining) == len(analysis.user_exclusions or []):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有这条排除记录")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这条排除记录", "Exclusion not found"))
     analysis.user_exclusions = remaining
     result = analysis.result
     # 和排除时一样的三步：记下旧分数 → 重新评分 → 删掉过时的说明；然后标记 result 变了，提交
@@ -895,7 +907,7 @@ def mark_owned(analysis_id: str, body: schemas.MarkOwnedRequest, principal: Prin
     analysis = load_finished_analysis(db, principal, analysis_id)
     record = chem.mol_record(body.smiles)
     if record is None:
-        raise HTTPException(422, "结构读不出来")
+        raise HTTPException(422, i18n.tr("结构读不出来", "The structure could not be read"))
     result = analysis.result
     # 这个物质在不在这次分析的结果里（按 key14 找）。不在也照样记进库存，只是不用重新评分
     molecule = result["molecules"].get(record.key14)

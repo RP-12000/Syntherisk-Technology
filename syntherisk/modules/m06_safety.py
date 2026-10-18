@@ -59,7 +59,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.external import ExternalServiceError, PubChemClient, collect_ghs, parse_ghs_codes
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import Compound, ReferenceData
@@ -149,24 +149,105 @@ H_STATEMENTS: dict[str, tuple[str, str | None, str]] = {
     "H402": ("对水生生物有害", None, ""),
 }
 
+# H 编码 -> 英文危险性说明（GHS 的标准英文措辞）。和上面那张表一一对应；紧接着的循环把
+# “中文说明 → 英文说明”登记进 i18n，请求带 ?lang=en 时证据卡、报告里的说明就换成英文（见 syntherisk/i18n.py）。
+# 上面的表里加了新的编码，这里也要补上英文；tests 之外没有别的地方检查，漏了的那条会照旧显示中文
+_H_STATEMENTS_EN: dict[str, str] = {
+    "H200": "Unstable explosive",
+    "H201": "Explosive; mass explosion hazard",
+    "H202": "Explosive; severe projection hazard",
+    "H203": "Explosive; fire, blast or projection hazard",
+    "H204": "Fire or projection hazard",
+    "H205": "May mass explode in fire",
+    "H220": "Extremely flammable gas",
+    "H221": "Flammable gas",
+    "H222": "Extremely flammable aerosol",
+    "H224": "Extremely flammable liquid and vapour",
+    "H225": "Highly flammable liquid and vapour",
+    "H226": "Flammable liquid and vapour",
+    "H228": "Flammable solid",
+    "H240": "Heating may cause an explosion",
+    "H241": "Heating may cause a fire or explosion",
+    "H242": "Heating may cause a fire",
+    "H250": "Catches fire spontaneously if exposed to air",
+    "H251": "Self-heating; may catch fire",
+    "H252": "Self-heating in large quantities; may catch fire",
+    "H260": "In contact with water releases flammable gases which may ignite spontaneously",
+    "H261": "In contact with water releases flammable gas",
+    "H270": "May cause or intensify fire; oxidizer",
+    "H271": "May cause fire or explosion; strong oxidizer",
+    "H272": "May intensify fire; oxidizer",
+    "H280": "Contains gas under pressure; may explode if heated",
+    "H281": "Contains refrigerated gas; may cause cryogenic burns or injury",
+    "H290": "May be corrosive to metals",
+    "H300": "Fatal if swallowed",
+    "H301": "Toxic if swallowed",
+    "H302": "Harmful if swallowed",
+    "H304": "May be fatal if swallowed and enters airways",
+    "H310": "Fatal in contact with skin",
+    "H311": "Toxic in contact with skin",
+    "H312": "Harmful in contact with skin",
+    "H314": "Causes severe skin burns and eye damage",
+    "H315": "Causes skin irritation",
+    "H317": "May cause an allergic skin reaction",
+    "H318": "Causes serious eye damage",
+    "H319": "Causes serious eye irritation",
+    "H330": "Fatal if inhaled",
+    "H331": "Toxic if inhaled",
+    "H332": "Harmful if inhaled",
+    "H334": "May cause allergy or asthma symptoms or breathing difficulties if inhaled",
+    "H335": "May cause respiratory irritation",
+    "H336": "May cause drowsiness or dizziness",
+    "H340": "May cause genetic defects",
+    "H341": "Suspected of causing genetic defects",
+    "H350": "May cause cancer",
+    "H351": "Suspected of causing cancer",
+    "H360": "May damage fertility or the unborn child",
+    "H361": "Suspected of damaging fertility or the unborn child",
+    "H362": "May cause harm to breast-fed children",
+    "H370": "Causes damage to organs",
+    "H371": "May cause damage to organs",
+    "H372": "Causes damage to organs through prolonged or repeated exposure",
+    "H373": "May cause damage to organs through prolonged or repeated exposure",
+    "H400": "Very toxic to aquatic life",
+    "H410": "Very toxic to aquatic life with long lasting effects",
+    "H411": "Toxic to aquatic life with long lasting effects",
+    "H412": "Harmful to aquatic life with long lasting effects",
+    "H413": "May cause long lasting harmful effects to aquatic life",
+    "H420": "Harms public health and the environment by destroying ozone in the upper atmosphere",
+    "H227": "Combustible liquid",
+    "H303": "May be harmful if swallowed",
+    "H305": "May be harmful if swallowed and enters airways",
+    "H313": "May be harmful in contact with skin",
+    "H316": "Causes mild skin irritation",
+    "H320": "Causes eye irritation",
+    "H333": "May be harmful if inhaled",
+    "H401": "Toxic to aquatic life",
+    "H402": "Harmful to aquatic life",
+}
+for _code, _english in _H_STATEMENTS_EN.items():
+    i18n.register(H_STATEMENTS[_code][0], _english)
+
 # 从重到轻。汇总条上的“最高危害”取这里排在最前面的一类。
 # 每一项是 (类别, 汇总条上显示的文字)。管制的两个类别（controlled_strict、controlled_basic）不在这张表里，
 # 所以它们不会成为“最高危害”
+# 显示文字写成 i18n.tr("中文", "English")：表里存的仍是中文，英文登记在 i18n 里。
+# “遇水放出易燃气体”和 H261 的说明是同一句中文，所以英文也用同一句
 SEVERITY_ORDER = [
-    ("acute_toxic_12", "剧毒"),
-    ("cmr_1", "致癌、致突变或生殖毒性"),
-    ("explosive", "易爆"),
-    ("pyrophoric", "自燃"),
-    ("acute_toxic_3", "有毒"),
-    ("extremely_flammable", "极易燃"),
-    ("water_reactive", "遇水放出易燃气体"),
-    ("corrosive", "腐蚀"),
-    ("cmr_2", "疑似致癌或生殖毒性"),
-    ("oxidizer", "氧化剂"),
-    ("highly_flammable", "易燃"),
-    ("organ_toxicity", "损害器官"),
-    ("flammable", "易燃"),
-    ("sensitizer", "致敏"),
+    ("acute_toxic_12", i18n.tr("剧毒", "Highly toxic")),
+    ("cmr_1", i18n.tr("致癌、致突变或生殖毒性", "Carcinogenic, mutagenic or toxic to reproduction")),
+    ("explosive", i18n.tr("易爆", "Explosive")),
+    ("pyrophoric", i18n.tr("自燃", "Pyrophoric")),
+    ("acute_toxic_3", i18n.tr("有毒", "Toxic")),
+    ("extremely_flammable", i18n.tr("极易燃", "Extremely flammable")),
+    ("water_reactive", i18n.tr("遇水放出易燃气体", "In contact with water releases flammable gas")),
+    ("corrosive", i18n.tr("腐蚀", "Corrosive")),
+    ("cmr_2", i18n.tr("疑似致癌或生殖毒性", "Suspected carcinogen or reproductive toxicant")),
+    ("oxidizer", i18n.tr("氧化剂", "Oxidizer")),
+    ("highly_flammable", i18n.tr("易燃", "Flammable")),
+    ("organ_toxicity", i18n.tr("损害器官", "Organ toxicity")),
+    ("flammable", i18n.tr("易燃", "Flammable")),
+    ("sensitizer", i18n.tr("致敏", "Sensitizer")),
 ]
 # 类别 -> 名次（0 最重）。enumerate 给出 (序号, 元素)，这里只要元素里的类别名
 _SEVERITY_RANK = {flag: rank for rank, (flag, _) in enumerate(SEVERITY_ORDER)}
@@ -267,7 +348,12 @@ def statements_behind(hazard: dict[str, Any], flag: str) -> str:
     谁在用：
         m10_scoring.exclusion_reasons()：写“第 2 步用到剧毒物质 X（H310 皮肤接触致命）”这样的排除原因。
     """
-    return "、".join(f"{s['code']} {s['text']}" for s in hazard["statements"] if statement_for(s["code"])[1] == flag)
+    # 每一段“编码 说明”各自经过 i18n.tr（说明有英文对照，英文那段会自动换上），再用 i18n.join 连起来：
+    # 这样调用方把整串当参数拼进排除原因时，英文句子里用的就是英文说明
+    return i18n.join([
+        i18n.tr("{code} {text}", "{code} {text}", code=s["code"], text=s["text"])
+        for s in hazard["statements"] if statement_for(s["code"])[1] == flag
+    ])
 
 
 def most_severe(hazards: list[dict[str, Any]]) -> dict[str, Any] | None:

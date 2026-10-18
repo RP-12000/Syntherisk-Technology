@@ -72,9 +72,11 @@ LibraryVersion 两张表）、reference（scoring.toml 的 [evidence] 一节、d
 
 ---- 本文件里有什么（按阅读顺序）----
 
-    CLASS_BYTES、STRUCTURE_BYTES、DOC_TYPE_LABELS、_NUMBER、_US_GRANT   常量
+    CLASS_BYTES、STRUCTURE_BYTES、DOC_TYPE_LABELS、_NUMBER、_US_PATENT、_US_PUBLICATION、_DOI   常量
     parse_yield              从 “85%”“57 to 60%” 这样的文字里取产率
-    document_url             给先例拼原文链接（DOI 或 Google Patents）
+    document_url             给先例拼原文链接（DOI 或 Google Patents）；拼不出能打开的链接时是 None
+    google_patents_number    专利号 -> Google Patents 地址里的写法
+    precedent_url            给存在分析结果里的先例重新拼链接（读旧分析时用）
     precedent_values         一条反应 SMILES -> 先例库一行的各列（导入数据时用）
     precedent_from_reaction  同上，直接给出数据库对象（测试用）
     PrecedentIndex           先例库的内存索引
@@ -100,12 +102,13 @@ import re
 import statistics
 import threading
 from typing import Any
+from urllib.parse import quote
 
 import numpy as np
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import ReferenceData
 
@@ -116,11 +119,29 @@ from syntherisk.reference import ReferenceData
 CLASS_BYTES = chem.CLASS_FP_BITS // 8
 STRUCTURE_BYTES = chem.STRUCTURE_FP_BITS // 8
 # 文献类型 -> 显示文字（证据卡和报告里 “先例 1 · 专利 US…” 用）
-DOC_TYPE_LABELS = {"patent": "专利", "journal": "期刊论文", "dataset": "数据集"}
+# i18n.tr 返回的就是中文，同时登记了英文（请求带 ?lang=en 时换成英文，见 syntherisk/i18n.py）
+DOC_TYPE_LABELS = {
+    "patent": i18n.tr("专利", "Patent"),
+    "journal": i18n.tr("期刊论文", "Journal article"),
+    "dataset": i18n.tr("数据集", "Dataset"),
+}
+# 没有可用的产率时显示的文字（库是空的、没有先例、先例没报产率都用它）
+_NO_YIELD_LABEL = i18n.tr("无产率记录", "No yield on record")
 # 一个整数或小数：\d+ 是一串数字，(?:\.\d+)? 是可有可无的小数部分。parse_yield 用它从文字里取数字
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
-# 美国授权专利号里补了 0 的写法：^US 开头，0+ 是一个或多个 0，(\d{6,8}) 是 6 到 8 位数字（括号里的部分会被取出来），$ 结尾
-_US_GRANT = re.compile(r"^US0+(\d{6,8})$")
+# 美国专利号。USPTO 数据里的写法和 Google Patents 地址里的写法不一样：
+#     数据里          US03930836   US06171520B2   USRE037029E1   USRE028728   USH0001943H1   US20010000038A1
+#     Google Patents  US3930836    US6171520      USRE37029      USRE28728    USH1943        US20010000038
+# 地址里的号码不能补 0，末尾的类型代码（A、B1、B2、E1、H1……）也不写：数据里的类型代码常常和 Google Patents
+# 上的对不上（US06171520B2 在 Google Patents 上是 US6171520B1），代码一错就是 404；不写代码时 Google Patents
+# 会自己跳到这个号码的那一篇。上面每一种写法都在 Google Patents 上实际打开过。
+# 授权专利：^US 开头；(RE|PP|D|H|T)? 是再版、植物、外观设计、法定发明登记、防御性公开这几类的前缀，普通专利没有；
+# 0* 是补位的 0；([1-9]\d{0,7}) 是去掉补位 0 以后的号码，最多 8 位；(?:[A-Z]\d?)? 是可有可无的类型代码
+_US_PATENT = re.compile(r"^US(RE|PP|D|H|T)?0*([1-9]\d{0,7})(?:[A-Z]\d?)?$")
+# 申请公开号：US 后面是 4 位年份和 7 位流水号，一共 11 位数字。这里的 0 不是补位，不能去掉；类型代码同样不写
+_US_PUBLICATION = re.compile(r"^US(20\d{9})(?:[A-Z]\d?)?$")
+# DOI：10. 开头，4 到 9 位数字的注册机构号，一个斜杠，后面是不含空白的任意字符
+_DOI = re.compile(r"^10\.\d{4,9}/\S+$")
 
 
 # ---------------------------------------------------------------- 导入数据时用的小工具
@@ -150,32 +171,76 @@ def parse_yield(text: str | None) -> float | None:
     return round(value, 1) if 0 < value <= 100 else None
 
 
-def document_url(doc_type: str, document_id: str, doi: str | None) -> str | None:
-    """给一条先例拼一个能点开的原文链接。
+def document_url(doc_type: str | None, document_id: str | None, doi: str | None) -> str | None:
+    """给一条先例拼一个能点开的原文链接；拼不出确定能打开的链接时返回 None。
 
     参数：
         doc_type     文献类型：patent / journal / dataset。
-        document_id  文献号。专利就是专利号，比如 “US04981995”。
+        document_id  文献号。专利就是专利号，比如 “US04981995”“US06171520B2”。
         doi          DOI，没有是 None。
     返回：
-        有 DOI：https://doi.org/<DOI>。
-        没有 DOI，但是专利并且有专利号：Google Patents 上这篇专利的地址。
-        其余情况（没有 DOI 的期刊论文、数据集）：None。
-    细节：
-        USPTO 数据里的授权专利号在 US 后面补了 0（US04981995），Google Patents 的地址里没有这个 0
-        （US4981995），所以要去掉；带字母后缀的申请号（US20010000038A1）原样使用。
+        有 DOI：https://doi.org/<DOI>。DOI 前面带着 https://doi.org/ 或 doi: 的先去掉；
+                去掉以后不是 10. 开头的，当作没有 DOI。
+        没有 DOI，是专利，专利号是认得的写法：Google Patents 上这篇专利的地址（见 google_patents_number）。
+        其余情况返回 None，界面上就不显示链接：没有 DOI 的期刊论文和数据集；认不出来的文献号，
+        比如导入时没有文献号、按 “来源-行号” 编出来的 uspto-17，或者美国以外的专利号。
+    为什么认不出来就不给链接：
+        以前认不出来的专利号原样接在 Google Patents 的地址后面，USPTO 先例里七成多的链接因此是 404。
+        现在只给验证过能打开的写法拼链接，宁可不给，也不给打不开的。
     谁在用：
-        本文件的 PrecedentSearch._to_dict()；tests/test_scoring.py。
+        本文件的 precedent_url() 和 PrecedentSearch._to_dict()；tests/test_scoring.py。
     """
     if doi:
-        return f"https://doi.org/{doi}"
+        # 去掉 DOI 前面可能带着的地址或 “doi:”；flags=re.I 表示不分大小写
+        text = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)\s*", "", doi.strip(), flags=re.I)
+        if _DOI.match(text):
+            # quote 把在地址里有特殊含义的字符（# ? % 空格 < > 等）换成 %XX；斜杠、冒号、分号、括号保留原样
+            return f"https://doi.org/{quote(text, safe='/:;()')}"
     if doc_type == "patent" and document_id:
-        # 去掉专利号里的空格
-        number = document_id.replace(" ", "")
-        # 是补了 0 的美国授权专利号时，match.group(1) 是去掉这些 0 以后的数字部分；不是就原样用
-        match = _US_GRANT.match(number)
-        return f"https://patents.google.com/patent/{'US' + match.group(1) if match else number}"
+        number = google_patents_number(document_id)
+        if number:
+            return f"https://patents.google.com/patent/{number}"
     return None
+
+
+def google_patents_number(document_id: str) -> str | None:
+    """把专利号换成 Google Patents 地址里的写法；不是认得的美国专利号时返回 None。
+
+    参数：
+        document_id  专利号，比如 USPTO 数据里的 “US06171520B2”。中间有空格、逗号、横线、斜杠的
+                     写法（“US 6,171,520 B2”“US 2001/0000038 A1”）也认。
+    返回：
+        US03930836 -> US3930836；US06171520B2 -> US6171520；USRE037029E1 -> USRE37029；
+        USH0001943H1 -> USH1943；US20010000038A1 -> US20010000038；uspto-17、EP1234567A1 -> None。
+        规则见文件开头 _US_PATENT 上面的注释：去掉补位的 0 和末尾的类型代码。
+    谁在用：
+        本文件的 document_url()。
+    """
+    # 去掉空白（\s）、逗号、横线、斜杠，统一成大写
+    number = re.sub(r"[\s,\-/]", "", document_id).upper()
+    match = _US_PUBLICATION.match(number)
+    if match:
+        return f"US{match.group(1)}"
+    match = _US_PATENT.match(number)
+    if match:
+        # group(1) 是前缀（RE、H……；普通专利没有，是 None），group(2) 是去掉补位 0 的号码
+        return f"US{match.group(1) or ''}{match.group(2)}"
+    return None
+
+
+def precedent_url(precedent: dict[str, Any]) -> str | None:
+    """存在分析结果里的一条先例现在应该给的原文链接：按它的文献类型、文献号、DOI 重新拼。
+
+    分析结果里的每条先例都存着当时拼好的 url（见 _to_dict）。旧版本拼的链接有七成多打不开，
+    而那些分析的结果还存在库里，所以读结果的地方都用这个函数重新拼，不用存着的 url。
+    参数：
+        precedent  _to_dict() 返回的那种字典；用其中的 doc_type、document_id、doi。
+    返回：
+        同 document_url()，拼不出能打开的链接时是 None。
+    谁在用：
+        cards.py 的 build_card()（证据卡、先例列表、报告里的先例）和 build_sources()（卡上的来源）。
+    """
+    return document_url(precedent.get("doc_type"), precedent.get("document_id"), precedent.get("doi"))
 
 
 def precedent_values(
@@ -542,15 +607,17 @@ class PrecedentSearch:
             return {
                 "db_empty": True,
                 "level": None,
-                "label": "未评估（先例库还没有导入数据）",
+                "label": i18n.tr("未评估（先例库还没有导入数据）", "Not assessed (the precedent library has no data yet)"),
                 "stars": None,
                 "literature_score": None,
                 "precedents": [],
                 "n_exact": 0,
                 "best_similarity": None,
                 "compared_by": None,
-                "yield": {"source": "none", "label": "无产率记录", "refs": []},
-                "basis": "先例库还没有导入 USPTO / ORD 数据，文献依据这一项暂不计分",
+                "yield": {"source": "none", "label": _NO_YIELD_LABEL, "refs": []},
+                "basis": i18n.tr("先例库还没有导入 USPTO / ORD 数据，文献依据这一项暂不计分",
+                                 "No USPTO / ORD data has been imported into the precedent library yet, "
+                                 "so literature evidence is not scored"),
             }
 
         # 证据卡里最多列几条先例
@@ -609,7 +676,9 @@ class PrecedentSearch:
         level, score, basis = self._grade(n_exact, best, model_probability, related, only_unverified)
         if not balanced and not by_center and not n_exact:
             # 按指纹比、反应物又没给全、也没有同一反应的记录：等级是 E4，但要把原因说清楚
-            basis = f"反应物没有给全（产物多出 {unaccounted} 个原子），没法按反应类型找相似先例"
+            basis = i18n.tr("反应物没有给全（产物多出 {n} 个原子），没法按反应类型找相似先例",
+                            "The reactants are incomplete (the product has {n} extra atoms), "
+                            "so similar precedents cannot be searched by reaction type", n=unaccounted)
         # 等级的名字和星数在 scoring.toml 的 [evidence.levels.E1] 到 [evidence.levels.E4]
         spec = self.config["levels"][level]
         return {
@@ -898,34 +967,48 @@ class PrecedentSearch:
         if n_exact:
             # band 是这个等级的分数段 [下限, 上限]。先例越多越接近上限，3 条封顶
             lo, hi = levels["E1"]["band"]
-            return "E1", lo + (hi - lo) * min(1.0, n_exact / 3), f"{n_exact} 个先例报道了同一个反应"
+            # 英文分单复数（1 precedent reports / 3 precedents report），中文是同一句
+            return "E1", lo + (hi - lo) * min(1.0, n_exact / 3), i18n.tr(
+                "{n} 个先例报道了同一个反应",
+                "{n} precedent reports the same reaction" if n_exact == 1 else "{n} precedents report the same reaction",
+                n=n_exact)
         if best is not None and best >= high:
             lo, hi = levels["E2"]["band"]
             # 相似度在 high 到 1 之间走了多远，分数就在分数段里走多远。max(1e-9, …) 防止阈值配成 1 时除以 0
             score = lo + (hi - lo) * (best - high) / max(1e-9, 1 - high)
-            return "E2", score, f"找到同类反应的先例，底物相似度最高 {best:.2f}"
+            return "E2", score, i18n.tr("找到同类反应的先例，底物相似度最高 {best:.2f}",
+                                        "Precedents of the same reaction type found; highest substrate similarity {best:.2f}",
+                                        best=best)
         if best is not None and best >= low:
             lo, hi = levels["E3"]["band"]
             # 同样的算法：相似度在 low 到 high 之间的位置，对应到 E3 的分数段里
             score = lo + (hi - lo) * (best - low) / max(1e-9, high - low)
-            return "E3", score, f"只找到底物差异较大的同类反应，相似度最高 {best:.2f}"
+            return "E3", score, i18n.tr(
+                "只找到底物差异较大的同类反应，相似度最高 {best:.2f}",
+                "Only same-type reactions on rather different substrates were found; highest similarity {best:.2f}",
+                best=best)
         if related is not None:
             # 产物相近、但不是同一种转化（比如先例用酰氯，这一步用羧酸）：只能算很弱的旁证，落在 E3 的最低一段
             lo, hi = levels["E3"]["band"]
             share = float(self.config.get("related_score_share", 0.3))
             basis = (
-                "只找到没带原子映射的相近先例，没法确认是不是同一种转化，只当旁证"
+                i18n.tr("只找到没带原子映射的相近先例，没法确认是不是同一种转化，只当旁证",
+                        "Only close precedents without atom mapping were found; they cannot be confirmed as "
+                        "the same transformation and count only as supporting evidence")
                 if unverified
-                else "没有找到同类反应的先例，只有做法不同的相关反应"
+                else i18n.tr("没有找到同类反应的先例，只有做法不同的相关反应",
+                             "No precedents of the same reaction type were found; only related reactions done differently")
             )
             return "E3", lo + (hi - lo) * share * min(1.0, related), basis
         lo, hi = levels["E4"]["band"]
         base = float(self.config.get("no_precedent_score", 15))
         if model_probability is None:
-            return "E4", base, "未找到先例"
+            return "E4", base, i18n.tr("未找到先例", "No precedents found")
         # 概率先限制在 0 到 1 之间，再把 base 到分数段上限之间的那一截按概率给；min(hi, …) 保证不超出分数段
         score = min(hi, base + (hi - base) * max(0.0, min(1.0, model_probability)))
-        return "E4", score, f"未找到先例；只有模型依据（单步模型概率 {model_probability:.2f}）"
+        return "E4", score, i18n.tr("未找到先例；只有模型依据（单步模型概率 {probability:.2f}）",
+                                    "No precedents found; model evidence only (single-step model probability {probability:.2f})",
+                                    probability=model_probability)
 
     def _yield_info(self, precedents: list[dict[str, Any]], level: str,
                     exact_yields: list[float] | None = None) -> dict[str, Any]:
@@ -964,20 +1047,24 @@ class PrecedentSearch:
         # 其中有产率记录的才用得上
         reported = [p for p in usable if p["yield_pct"] is not None]
         if not reported:
-            return {"source": "none", "label": "无产率记录", "refs": []}
+            return {"source": "none", "label": _NO_YIELD_LABEL, "refs": []}
         # E1：用全部同一反应记录的产率；没传进来（或者是 E2）就用列在卡上的这几条
         values = list(exact_yields) if level == "E1" and exact_yields else [p["yield_pct"] for p in reported]
         low, high_value = min(values), max(values)
         # “:g” 这种格式会去掉多余的 0（85.0 写成 85）。最低和最高一样时只写一个数，否则写成范围
         span = f"{low:g}%" if low == high_value else f"{low:g}–{high_value:g}%"
-        origin = "文献报道" if level == "E1" else "相似先例报道"
+        origin = (i18n.tr("文献报道", "Reported in the literature") if level == "E1"
+                  else i18n.tr("相似先例报道", "Reported for similar precedents"))
         return {
             "source": "literature" if level == "E1" else "similar_literature",
             "low": low,
             "high": high_value,
             "median": round(statistics.median(values), 1),
             "n": len(values),
-            "label": f"{origin} {span}（{len(values)} 个先例）",
+            # 整句经过 i18n.tr 才有英文（origin 那一段有自己的对照，会自动换上）；英文分单复数
+            "label": i18n.tr("{origin} {span}（{n} 个先例）",
+                             "{origin}: {span} ({n} precedent)" if len(values) == 1 else "{origin}: {span} ({n} precedents)",
+                             origin=origin, span=span, n=len(values)),
             "refs": [p["ref"] for p in reported],
         }
 
@@ -1003,7 +1090,7 @@ class PrecedentSearch:
             doc_type_label    上一项的中文
             document_id       文献号（专利号等）
             year、doi、title  年份、DOI、题目，没有是 None
-            url               原文链接，没有是 None（见 document_url）
+            url               原文链接；拼不出能打开的链接时是 None（见 document_url）
             similarity        底物相似度，三位小数
             class_similarity  反应一致程度，三位小数
             exact             是不是同一反应

@@ -32,6 +32,7 @@ from typing import Any
 
 import httpx
 
+from syntherisk import i18n
 from syntherisk.llm.base import LLMError, LLMRefusal, LLMResponse
 
 
@@ -110,8 +111,14 @@ class OpenAICompatibleProvider:
             # 厂商只保证“输出是一个 JSON 对象”，所以把 Schema 的原文附在系统提示词后面告诉模型。
             # ensure_ascii=False：Schema 里的中文原样写出，不转成 \uXXXX 这样的转义
             response_format = {"type": "json_object"}
+            # 这句要求跟着系统提示词的语言走：业务模块在要英文时发的是英文提示词（见 m11_explain.py），
+            # 后面接一句中文容易把模型带回中文。中文时这一段和以前一字不差
+            if i18n.current_lang() == "en":
+                demand = "Output a single JSON object and nothing else. It must conform to the following JSON Schema:"
+            else:
+                demand = "只输出一个 JSON 对象，不要有任何其他文字。它必须符合下面的 JSON Schema："
             system = (
-                f"{system}\n\n只输出一个 JSON 对象，不要有任何其他文字。它必须符合下面的 JSON Schema：\n"
+                f"{system}\n\n{demand}\n"
                 f"{json.dumps(schema, ensure_ascii=False)}"
             )
         body = {
@@ -125,31 +132,35 @@ class OpenAICompatibleProvider:
             # json=body：httpx 把字典转成 JSON 放进请求体
             response = self._http.post(self._url, json=body)
         except httpx.HTTPError as exc:
-            # 网络层面的失败（连不上、超时、连接中断……）。报错里只留错误类型的名字
-            raise LLMError(f"连不上大模型接口：{type(exc).__name__}") from exc
+            # 网络层面的失败（连不上、超时、连接中断……）。报错里只留错误类型的名字。
+            # 错误说明都用 i18n.tr 写：业务模块会把它拼进返回值的 note，要英文时用的是这里配的英文
+            # （英文句首不大写，因为它是嵌在 note 那句话的括号里的）
+            raise LLMError(i18n.tr("连不上大模型接口：{error}", "could not connect to the model API: {error}",
+                                   error=type(exc).__name__)) from exc
         if response.status_code != 200:
             # 密钥不对、限流、型号写错等都走这里；带上回复的前 200 个字符方便排查
-            raise LLMError(f"大模型接口返回错误（HTTP {response.status_code}）：{response.text[:200]}")
+            raise LLMError(i18n.tr("大模型接口返回错误（HTTP {status}）：{detail}", "the model API returned an error (HTTP {status}): {detail}",
+                                   status=response.status_code, detail=response.text[:200]))
         try:
             payload = response.json()
             # 回复的结构：{"choices": [{"message": {"content": "…"}}], "usage": {…}, "model": "…"}
             message = payload["choices"][0]["message"]
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             # TypeError：整段回复不是字典，或者 choices 是 null（有的网关出错时也回 200，但内容是这样的）
-            raise LLMError("大模型接口返回的格式不对") from exc
+            raise LLMError(i18n.tr("大模型接口返回的格式不对", "the model API returned a response in an unexpected format")) from exc
         if not isinstance(message, dict):
-            raise LLMError("大模型接口返回的格式不对")
+            raise LLMError(i18n.tr("大模型接口返回的格式不对", "the model API returned a response in an unexpected format"))
         if message.get("refusal"):
-            raise LLMRefusal("模型出于安全策略没有回答")
+            raise LLMRefusal(i18n.tr("模型出于安全策略没有回答", "the model declined to answer under its safety policy"))
         try:
             # content 是模型写的文本，应当是一段 JSON；是空的或者没有时按空字符串解析，同样算不合法
             data = json.loads(message.get("content") or "")
         except (ValueError, TypeError) as exc:
             # TypeError：content 不是一段文本（有的网关把它拆成了一个列表）
-            raise LLMError("模型返回的不是合法 JSON") from exc
+            raise LLMError(i18n.tr("模型返回的不是合法 JSON", "the model did not return valid JSON")) from exc
         # 合法的 JSON 也可能是列表或数字；业务模块按字典来用，所以在这里卡一道
         if not isinstance(data, dict):
-            raise LLMError("模型返回的 JSON 不是对象")
+            raise LLMError(i18n.tr("模型返回的 JSON 不是对象", "the JSON returned by the model is not an object"))
         usage = payload.get("usage") or {}
         return LLMResponse(
             data=data,

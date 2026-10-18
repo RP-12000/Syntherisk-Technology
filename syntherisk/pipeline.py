@@ -96,7 +96,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.cards import build_card
 from syntherisk.constraints import Constraints, EffectiveConstraints, merge_constraints
 from syntherisk.context import AppContext
@@ -121,16 +121,67 @@ logger = logging.getLogger("syntherisk.pipeline")
 #           比如用演示引擎时，第 2 阶段这里写的仍然是 AiZynthFinder
 #   hint    一句话说明这个阶段在做什么
 # fresh_stages() 给每一项再加上 status、message、started_at、finished_at，存进 analyses.stages
+# name / module / hint 存下来的是中文；i18n.tr() 在这里登记了它们的英文，返回给前端时按语言对照着换
 STAGES = [
-    {"index": 1, "key": "constraints", "name": "读入约束", "module": "应用服务", "hint": "合并档位、勾选和一句话要求"},
-    {"index": 2, "key": "search", "name": "逆合成搜索", "module": "AiZynthFinder", "hint": "单步模型提出前体，树搜索一层层回推"},
-    {"index": 3, "key": "availability", "name": "原料可得性", "module": "库存 + 在售目录", "hint": "每个原料：库存、可购买，还是买不到"},
-    {"index": 4, "key": "precedents", "name": "文献先例", "module": "USPTO · ORD", "hint": "每一步找相同或最相似的已报道反应"},
-    {"index": 5, "key": "safety", "name": "毒性与法规", "module": "PubChem · 管制清单", "hint": "GHS 危害、致癌致突变、管制品"},
-    {"index": 6, "key": "conditions", "name": "条件、产率、绿色化学", "module": "规则", "hint": "复杂度标签、产率、原子经济性"},
-    {"index": 7, "key": "scoring", "name": "评分与排序", "module": "评分", "hint": "步骤分 → 路线分 → 置信度"},
-    {"index": 8, "key": "explain", "name": "写说明", "module": "大模型", "hint": "给前几条路线的每一步写说明，每句附出处"},
+    {"index": 1, "key": "constraints", "name": i18n.tr("读入约束", "Read constraints"),
+     "module": i18n.tr("应用服务", "App service"),
+     "hint": i18n.tr("合并档位、勾选和一句话要求", "Merge presets, checkboxes and free-text requirements")},
+    {"index": 2, "key": "search", "name": i18n.tr("逆合成搜索", "Retrosynthesis search"),
+     "module": "AiZynthFinder",
+     "hint": i18n.tr("单步模型提出前体，树搜索一层层回推",
+                     "A single-step model proposes precursors; tree search works backwards level by level")},
+    {"index": 3, "key": "availability", "name": i18n.tr("原料可得性", "Starting-material availability"),
+     "module": i18n.tr("库存 + 在售目录", "Inventory + vendor catalogs"),
+     "hint": i18n.tr("每个原料：库存、可购买，还是买不到", "Each starting material: in stock, purchasable or unavailable")},
+    {"index": 4, "key": "precedents", "name": i18n.tr("文献先例", "Literature precedents"),
+     "module": "USPTO · ORD",
+     "hint": i18n.tr("每一步找相同或最相似的已报道反应", "Find the same or the most similar reported reaction for each step")},
+    {"index": 5, "key": "safety", "name": i18n.tr("毒性与法规", "Toxicity and regulation"),
+     "module": i18n.tr("PubChem · 管制清单", "PubChem · controlled-substance lists"),
+     "hint": i18n.tr("GHS 危害、致癌致突变、管制品", "GHS hazards, CMR, controlled substances")},
+    {"index": 6, "key": "conditions", "name": i18n.tr("条件、产率、绿色化学", "Conditions, yield, green chemistry"),
+     "module": i18n.tr("规则", "Rules"),
+     "hint": i18n.tr("复杂度标签、产率、原子经济性", "Complexity tags, yield, atom economy")},
+    {"index": 7, "key": "scoring", "name": i18n.tr("评分与排序", "Scoring and ranking"),
+     "module": i18n.tr("评分", "Scoring"),
+     "hint": i18n.tr("步骤分 → 路线分 → 置信度", "Step score → route score → confidence")},
+    {"index": 8, "key": "explain", "name": i18n.tr("写说明", "Write explanations"),
+     "module": i18n.tr("大模型", "LLM"),
+     "hint": i18n.tr("给前几条路线的每一步写说明，每句附出处",
+                     "Explain every step of the top routes, with a source for each sentence")},
 ]
+
+
+def _plural(count: int, singular: str, plural: str | None = None) -> str:
+    """英文进度说明里的单复数：count 是 1 用 singular，否则用 plural（不给就在 singular 后面加 s）。
+
+    只当作 i18n.tr() 的参数用：中文模板里不写这个参数，所以中文句子不受影响。
+    """
+    return singular if count == 1 else (plural or singular + "s")
+
+
+# 下面这些固定的句子会存进分析结果（或者 analyses 表）。在这里、也就是导入本文件时就登记它们的英文，
+# 而不是等执行到用它的那一行才登记：结果可能是另一个进程（Worker）算的，或者是服务重启之前算的，
+# 读它的进程同样要查得到这些句子的英文。
+NO_PRECEDENT_DATA_WARNING = i18n.tr(
+    "先例库还没有导入 USPTO / ORD 数据：证据等级没有评估，文献依据这一项不计分",
+    "No USPTO / ORD data has been imported into the precedent library: evidence levels were not assessed "
+    "and the literature dimension is not scored",
+)
+OLD_PRECEDENT_DATA_WARNING = i18n.tr(
+    "先例库是在加入“反应中心”之前导入的：这次只能按指纹判断同类反应，容易把不同的反应当成先例。重新导入一遍先例库即可",
+    "The precedent library was imported before reaction centers were added: same-class reactions can only be "
+    "judged by fingerprint this time, so different reactions may be mistaken for precedents. "
+    "Re-import the precedent library to fix this",
+)
+PUBCHEM_FAILED_WARNING = i18n.tr(
+    "PubChem 这次连不上：内置试剂表之外的物质没有危害数据",
+    "PubChem could not be reached this time: substances outside the built-in reagent table have no hazard data",
+)
+INTERRUPTED_ERROR = i18n.tr(
+    "服务重启时任务被中断，请重新开始分析",
+    "The task was interrupted by a service restart. Please start the analysis again",
+)
 
 
 class AnalysisCancelled(RuntimeError):
@@ -249,6 +300,8 @@ class AnalysisRunner:
         self.analysis = analysis
         # 分析结果。第 2 阶段由 build_skeleton() 建出骨架，之后各阶段往里添内容
         self.result: dict[str, Any] = {}
+        # 这次分析的“中文 → 英文”对照表：各阶段用 i18n.tr() 拼文字时往里记，_save_result() 把它存进 result["_en"]
+        self.en: dict[str, str] = {}
         # 第 1 阶段合并出来的“实际执行的约束”；第 2、7 阶段要用
         self.effective: EffectiveConstraints | None = None
         # 第 3 阶段建的可得性检查器；第 4 阶段借用先例的试剂时，还要用它查这些试剂能不能买到
@@ -311,13 +364,16 @@ class AnalysisRunner:
         stage["status"] = status
         if message:
             stage["message"] = message
+            # 进度说明的英文直接存在旁边（message_en），返回时由 i18n.localize() 按语言挑
+            stage["message_en"] = i18n.en_of(message)
         if status == "running" and not stage["started_at"]:
             stage["started_at"] = now
         if status in ("done", "skipped", "failed"):
             stage["finished_at"] = now
         self.analysis.stages = stages
         self.analysis.current_stage = index
-        add_event(self.session, self.analysis.id, "stage", {"index": index, "status": status, "message": stage["message"]})
+        add_event(self.session, self.analysis.id, "stage", {"index": index, "status": status, "message": stage["message"],
+                                                           "message_en": stage.get("message_en") or ""})
         self.session.commit()
 
     def _save_result(self, event: str | None = None) -> None:
@@ -332,6 +388,8 @@ class AnalysisRunner:
             再次赋同一个对象时 SQLAlchemy 看不出它变了，所以必须加这一句。
             每次保存都是把整个结果重新转成 JSON、重新加密、整列重写。
         """
+        # 这次分析攒下的“中文 → 英文”对照跟着结果一起存（见 i18n.py）
+        self.result["_en"] = self.en
         self.analysis.result = self.result
         flag_modified(self.analysis, "result")
         if event:
@@ -375,7 +433,7 @@ class AnalysisRunner:
         if not self._search():
             # 没有路线：第 3–8 阶段无事可做，逐个标成“跳过”（range(3, 9) 是 3 到 8）
             for index in range(3, 9):
-                self._set_stage(index, "skipped", "没有路线，跳过")
+                self._set_stage(index, "skipped", i18n.tr("没有路线，跳过", "No routes; skipped"))
             return
 
         # ---- 第 3–8 阶段：每个阶段一个方法，说明见各方法的文档 ----
@@ -478,7 +536,10 @@ class AnalysisRunner:
             self.result["stage"] = "final"
             self.result.update({"ranking": [], "excluded": []})
             # 引擎给了提示，就把第一条接在后面（比如演示引擎会说它只有哪几个分子的路线）
-            message = "没有找到路线" + (f"：{search.warnings[0]}" if search.warnings else "")
+            if search.warnings:
+                message = i18n.tr("没有找到路线：{warning}", "No routes found: {warning}", warning=search.warnings[0])
+            else:
+                message = i18n.tr("没有找到路线", "No routes found")
             self._set_stage(2, "done", message)
             self._save_result()
             return False
@@ -489,12 +550,24 @@ class AnalysisRunner:
         # engine_solved 是引擎对每条路线的判断：False 表示没拆到它认为在售的原料。
         # 演示路线的这一项是 None，`is False` 不成立，所以不计入
         incomplete = sum(route["engine_solved"] is False for route in self.result["routes"])
-        found = f"找到 {count} 条路线，其中 {incomplete} 条没有拆到在售原料" if incomplete else f"找到 {count} 条完整路线"
+        # 进度说明都用 i18n.tr() 拼成整句：_set_stage() 靠它查出英文存进 message_en。
+        # routes、verb 这类参数只有英文模板用（单复数）
+        if incomplete:
+            found = i18n.tr("找到 {count} 条路线，其中 {incomplete} 条没有拆到在售原料",
+                            "Found {count} {routes}, {incomplete} of which {verb} not reach purchasable starting materials",
+                            count=count, incomplete=incomplete, routes=_plural(count, "route"),
+                            verb=_plural(incomplete, "does", "do"))
+        else:
+            found = i18n.tr("找到 {count} 条完整路线", "Found {count} complete {routes}",
+                            count=count, routes=_plural(count, "route"))
         # 进度里的话分三种：演示引擎；有节点数（{…:,} 给数字加千位分隔符）；没有节点数
         if search.engine == "demo":
-            message = f"演示引擎：给出 {count} 条内置路线（还没有接入 AiZynthFinder）"
+            message = i18n.tr("演示引擎：给出 {count} 条内置路线（还没有接入 AiZynthFinder）",
+                              "Demo engine: {count} built-in {routes} (AiZynthFinder is not connected yet)",
+                              count=count, routes=_plural(count, "route"))
         elif nodes:
-            message = f"已探索 {int(nodes):,} 个中间体，{found}"
+            message = i18n.tr("已探索 {nodes:,} 个中间体，{found}", "Explored {nodes:,} intermediates. {found}",
+                              nodes=int(nodes), found=found)
         else:
             message = found
         self._set_stage(2, "done", message)
@@ -546,7 +619,9 @@ class AnalysisRunner:
         counts = {name: sum(s["status"] == name for s in needed) for name in ("inventory", "purchasable", "unavailable")}
         self._set_stage(
             3, "done",
-            f"{len(needed)} 个原料：库存 {counts['inventory']} · 可购买 {counts['purchasable']} · 买不到 {counts['unavailable']}",
+            i18n.tr("{total} 个原料：库存 {inventory} · 可购买 {purchasable} · 买不到 {unavailable}",
+                    "{total} starting {materials}: {inventory} in stock · {purchasable} purchasable · {unavailable} unavailable",
+                    total=len(needed), materials=_plural(len(needed), "material"), **counts),
         )
         self._save_result()
 
@@ -602,23 +677,25 @@ class AnalysisRunner:
             # 更新一次进度文字，同时过一次取消检查点。最后一步不在这里报（循环结束后会报 done）
             if done % max(1, total // 5) == 0 and done < total:
                 self._check_cancel()
-                self._set_stage(4, "running", f"已检索 {done} / {total} 个步骤")
+                self._set_stage(4, "running", i18n.tr("已检索 {done} / {total} 个步骤", "Searched {done} / {total} steps",
+                                                      done=done, total=total))
 
         if search.db_empty:
             # 先例库一条数据都没有：不是“每一步都没有先例”，而是“没法评估”。等级留空，文献依据这一维不计分
-            self.result["warnings"].append("先例库还没有导入 USPTO / ORD 数据：证据等级没有评估，文献依据这一项不计分")
-            message = "先例库还没有导入数据，这次没有评估证据等级"
+            self.result["warnings"].append(NO_PRECEDENT_DATA_WARNING)
+            message = i18n.tr("先例库还没有导入数据，这次没有评估证据等级",
+                              "The precedent library has no data yet; evidence levels were not assessed this time")
         else:
             # 有的步骤带反应中心，库里却一条带反应中心的先例都没有：说明先例库是旧版本导入的
             if self.ctx.precedent_index.with_center == 0 and any(r.get("center") for r in reactions.values()):
-                self.result["warnings"].append(
-                    "先例库是在加入“反应中心”之前导入的：这次只能按指纹判断同类反应，容易把不同的反应当成先例。重新导入一遍先例库即可"
-                )
+                self.result["warnings"].append(OLD_PRECEDENT_DATA_WARNING)
             # 数一数四个等级各有几步，拼成进度里的那句话
             levels = [r["evidence"]["level"] for r in reactions.values()]
-            message = (
-                f"{total} 个步骤：直接报道 {levels.count('E1')} · 高相似 {levels.count('E2')} · "
-                f"低相似 {levels.count('E3')} · 未找到先例 {levels.count('E4')}"
+            message = i18n.tr(
+                "{total} 个步骤：直接报道 {e1} · 高相似 {e2} · 低相似 {e3} · 未找到先例 {e4}",
+                "{total} {steps}: {e1} directly reported · {e2} high similarity · {e3} low similarity · {e4} without precedent",
+                total=total, steps=_plural(total, "step"), e1=levels.count("E1"), e2=levels.count("E2"),
+                e3=levels.count("E3"), e4=levels.count("E4"),
             )
         self._set_stage(4, "done", message)
         self._save_result()
@@ -723,14 +800,18 @@ class AnalysisRunner:
         # 致癌致突变生殖毒性（1 类）、列入管制清单的各有几种，还有几种没有危害数据
         controlled = sum(bool(hazard["controlled"]) for hazard in assessed.values())
         unknown = sum(hazard["data_source"] == "none" for hazard in assessed.values())
-        message = (
-            f"检查了 {len(assessed)} 种物质：剧毒 {count('acute_toxic_12')} · "
-            f"致癌致突变生殖毒性 {count('cmr_1')} · 管制 {controlled}"
+        message = i18n.tr(
+            "检查了 {total} 种物质：剧毒 {toxic} · 致癌致突变生殖毒性 {cmr} · 管制 {controlled}",
+            "Checked {total} {substances}: {toxic} highly toxic · {cmr} CMR · {controlled} controlled",
+            total=len(assessed), substances=_plural(len(assessed), "substance"),
+            toxic=count("acute_toxic_12"), cmr=count("cmr_1"), controlled=controlled,
         )
         if unknown:
-            message += f" · {unknown} 种没有危害数据"
+            # 接在后面的半句也经过 i18n.tr，合成一整句，英文才对得上
+            message = i18n.tr("{message} · {unknown} 种没有危害数据", "{message} · {unknown} without hazard data",
+                              message=message, unknown=unknown)
         if service.pubchem_failed:
-            self.result["warnings"].append("PubChem 这次连不上：内置试剂表之外的物质没有危害数据")
+            self.result["warnings"].append(PUBCHEM_FAILED_WARNING)
         self._set_stage(5, "done", message)
         self._save_result()
 
@@ -813,7 +894,12 @@ class AnalysisRunner:
             special += any(tag.get("constraint") for tag in evaluated["tags"])
             with_yield += reaction["yield"]["source"] != "none"
         total = len(self.result["reactions"])
-        self._set_stage(6, "done", f"{total} 个步骤：{special} 步需要特殊操作 · {with_yield} 步有文献报道产率")
+        self._set_stage(6, "done", i18n.tr(
+            "{total} 个步骤：{special} 步需要特殊操作 · {with_yield} 步有文献报道产率",
+            "{total} {steps}: {special} {need} special handling · {with_yield} with literature-reported yield",
+            total=total, steps=_plural(total, "step"), special=special, need=_plural(special, "needs", "need"),
+            with_yield=with_yield,
+        ))
         self._save_result()
 
     def _score(self) -> None:
@@ -851,12 +937,16 @@ class AnalysisRunner:
         self.result["scoring_version"] = self.ctx.reference.scoring.get("version")
         routes = self.result["routes"]
         ranking = self.result["ranking"]
-        message = f"{len(routes)} 条路线已评分：可选 {len(ranking)} 条，被排除 {len(routes) - len(ranking)} 条"
+        message = i18n.tr("{total} 条路线已评分：可选 {eligible} 条，被排除 {excluded} 条",
+                          "{total} {routes} scored: {eligible} eligible, {excluded} excluded",
+                          total=len(routes), routes=_plural(len(routes), "route"),
+                          eligible=len(ranking), excluded=len(routes) - len(ranking))
         if ranking:
             # ranking[0] 是第一名的路线 id；next(…) 在 routes 里把这条路线找出来。
             # :g 去掉分数末尾多余的 0（81.0 显示成 81）
             best = next(route for route in routes if route["id"] == ranking[0])
-            message += f"；最高 {best['score']:g} 分"
+            message = i18n.tr("{message}；最高 {score:g} 分", "{message}; top score {score:g}",
+                              message=message, score=best["score"])
         self._set_stage(7, "done", message)
         self._save_result("scored")
 
@@ -909,9 +999,15 @@ class AnalysisRunner:
             written += 1 + len(route["steps"])
         self.result["stage"] = "final"
         if self.ctx.llm.enabled:
-            message = f"给前 {len(top)} 条路线写了 {written} 段说明"
+            message = i18n.tr("给前 {routes} 条路线写了 {written} 段说明",
+                              "Wrote {written} {explanations} for the top {routes} {noun}",
+                              routes=len(top), written=written, explanations=_plural(written, "explanation"),
+                              noun=_plural(len(top), "route"))
         else:
-            message = f"给前 {len(top)} 条路线生成了 {written} 段说明（未配置大模型，按模板生成）"
+            message = i18n.tr("给前 {routes} 条路线生成了 {written} 段说明（未配置大模型，按模板生成）",
+                              "Generated {written} {explanations} for the top {routes} {noun} (no LLM configured; built from templates)",
+                              routes=len(top), written=written, explanations=_plural(written, "explanation"),
+                              noun=_plural(len(top), "route"))
         self._set_stage(8, "done", message)
         self._save_result()
 
@@ -935,6 +1031,7 @@ def _close_running_stages(analysis: models.Analysis, status: str, message: str) 
         if stage["status"] == "running":
             stage["status"] = status
             stage["message"] = message
+            stage["message_en"] = i18n.en_of(message)
     analysis.stages = stages
 
 
@@ -987,21 +1084,23 @@ def run_analysis(ctx: AppContext, analysis_id: str) -> None:
 
         runner = AnalysisRunner(ctx, session, analysis)
         try:
-            runner.run()
+            # 八个阶段都在这个 with 里跑：期间 tr() 拼出来的每句话的英文都记进 runner.en
+            with i18n.collecting(runner.en, analysis.language or "zh"):
+                runner.run()
             analysis.status = "succeeded"
         except AnalysisCancelled:
             # rollback 以后，analysis 上的属性会在下一次读取时从数据库重新加载，
             # 拿到的是最后一次提交时的样子（比如 stages 里正在跑的那个阶段还是 running）
             session.rollback()
             analysis.status = "cancelled"
-            _close_running_stages(analysis, "cancelled", "已取消")
+            _close_running_stages(analysis, "cancelled", i18n.tr("已取消", "Cancelled"))
         except Exception as exc:  # noqa: BLE001 - 任何失败都要落库，让用户看到原因
             logger.exception("分析 %s 失败", analysis_id)
             session.rollback()
             analysis.status = "failed"
             # [:2000] 截断：有的异常说明很长（比如 AiZynthFinder 子进程失败时带着一大段日志）
             analysis.error = f"{type(exc).__name__}: {exc}"[:2000]
-            _close_running_stages(analysis, "failed", "这一阶段出错了")
+            _close_running_stages(analysis, "failed", i18n.tr("这一阶段出错了", "This stage failed"))
         analysis.finished_at = models.utcnow()
         add_event(session, analysis.id, "done", {"status": analysis.status, "error": analysis.error})
         session.commit()
@@ -1064,7 +1163,8 @@ def recover_interrupted(ctx: AppContext) -> list[str]:
         for analysis in unfinished:
             if analysis.attempts >= 2:
                 analysis.status = "failed"
-                analysis.error = "服务重启时任务被中断，请重新开始分析"
+                # 固定的一句，登记了英文（INTERRUPTED_ERROR）：接口返回 error 时按语言换
+                analysis.error = INTERRUPTED_ERROR
                 analysis.finished_at = models.utcnow()
                 add_event(session, analysis.id, "done", {"status": "failed", "error": analysis.error})
             else:

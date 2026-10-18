@@ -48,6 +48,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from syntherisk import i18n
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import ReferenceData
 
@@ -60,9 +61,18 @@ ConditionKey = Literal["pressurized_gas", "anhydrous_anaerobic", "glovebox", "cr
 # 比两个等级谁强谁弱，就比它们在这个列表里的位置（m10_scoring.exclusion_reasons）。
 EVIDENCE_ORDER = ["E1", "E2", "E3", "E4"]
 # A12 规模三档的显示文字，键是 Constraints.scale 的取值。每一档按多少毫克目标产量算，在 data/scoring.toml 的 [scale]。
-SCALE_LABELS = {"mg": "mg 级", "hundred_mg": "百 mg 级", "g": "g 级"}
+# 两张表的文字都经过 i18n.tr()：值仍是中文，导入时顺便登记了英文（请求要英文时整句换掉）。
+SCALE_LABELS = {
+    "mg": i18n.tr("mg 级", "mg scale"),
+    "hundred_mg": i18n.tr("百 mg 级", "100 mg scale"),
+    "g": i18n.tr("g 级", "g scale"),
+}
 # A8 原料来源三档的显示文字，键是 Constraints.stock_source 的取值。
-STOCK_LABELS = {"inventory_only": "仅用库存", "inventory_first": "库存优先 + 可购买", "any": "不限来源"}
+STOCK_LABELS = {
+    "inventory_only": i18n.tr("仅用库存", "Inventory only"),
+    "inventory_first": i18n.tr("库存优先 + 可购买", "Inventory first + purchasable"),
+    "any": i18n.tr("不限来源", "Any source"),
+}
 
 
 class SafetyRequirements(BaseModel):
@@ -263,8 +273,12 @@ class EffectiveConstraints:
         """
         # source 是 "ai" 的标签就是来自一句话要求（A14）的
         from_text = sum(1 for tag in self.tags if tag["source"] == "ai")
-        suffix = f"，其中 {from_text} 条来自一句话要求" if from_text else ""
-        return f"合并 {len(self.tags)} 条约束{suffix}"
+        # 两种说法各是一整句（中英对照按整句匹配，不能把后半句单独拼上去）
+        if from_text:
+            return i18n.tr("合并 {total} 条约束，其中 {from_text} 条来自一句话要求",
+                           "Constraints merged: {total} ({from_text} from the free-text requirement)",
+                           total=len(self.tags), from_text=from_text)
+        return i18n.tr("合并 {total} 条约束", "Constraints merged: {total}", total=len(self.tags))
 
 
 def _substance_entry(reference: ReferenceData, smiles: str) -> tuple[str, str] | None:
@@ -332,15 +346,19 @@ def merge_constraints(constraints: Constraints, reference: ReferenceData) -> Eff
         if not any(existing["key"] == key for existing in tags):
             tags.append({"key": key, "label": label, "kind": kind, "hardness": hardness, "source": source})
 
+    # 下面每个标签的文字都用 i18n.tr() 拼：返回的是中文，同时记下这一句的英文。
+    # 词表里的名称、物质名当参数传进去，英文句子里会自动用它们登记过的英文。
     # ---- A7 复杂度档位、A8 原料来源：各一个标签
-    tag("complexity", f"{tier['label']} · ≤ {effective.max_steps} 步", kind="tier", source="tier")
+    tag("complexity", i18n.tr("{tier} · ≤ {steps} 步", "{tier} · ≤ {steps} steps", tier=tier["label"],
+                              steps=effective.max_steps), kind="tier", source="tier")
     tag("stock", STOCK_LABELS[constraints.stock_source], kind="tier", source="tier")
 
     # ---- A10 做不了的条件：都是硬约束。label_for(..., short=True) 取词表里的短名，比如“加压气体”
     for key in constraints.unavailable_conditions:
         effective.excluded_conditions.add(key)
         label = reference.label_for("condition", key, short=True)
-        tag(f"condition:{key}", f"排除：{label}", kind="exclude", source="checkbox", hardness="hard")
+        tag(f"condition:{key}", i18n.tr("排除：{label}", "Exclude: {label}", label=label), kind="exclude",
+            source="checkbox", hardness="hard")
 
     # ---- A11 安全要求：三个勾选框，勾了哪个就加哪个
     for flag, enabled in (
@@ -351,37 +369,47 @@ def merge_constraints(constraints: Constraints, reference: ReferenceData) -> Eff
         if enabled:
             effective.excluded_safety.add(flag)
             label = reference.label_for("safety", flag, short=True)
-            tag(f"safety:{flag}", f"排除：{label}", kind="exclude", source="checkbox", hardness="hard")
+            tag(f"safety:{flag}", i18n.tr("排除：{label}", "Exclude: {label}", label=label), kind="exclude",
+                source="checkbox", hardness="hard")
 
     # ---- A13 高级参数。步数上限和最低证据等级上面已经填进 effective 了，这里只补标签
     if advanced.max_steps:
-        tag("max_steps", f"步数 ≤ {advanced.max_steps}", kind="exclude", source="advanced", hardness="hard")
+        tag("max_steps", i18n.tr("步数 ≤ {steps}", "Steps ≤ {steps}", steps=advanced.max_steps), kind="exclude",
+            source="advanced", hardness="hard")
     if advanced.min_evidence_level:
-        tag("evidence", f"证据不低于 {advanced.min_evidence_level}", kind="exclude", source="advanced", hardness="hard")
+        tag("evidence", i18n.tr("证据不低于 {level}", "Evidence at least {level}", level=advanced.min_evidence_level),
+            kind="exclude", source="advanced", hardness="hard")
     # 排除的试剂类别：编号要在词表里才算数
     for class_key in advanced.excluded_reagent_classes:
         if class_key in reference.vocabulary.get("reagent_class", {}):
             effective.excluded_reagent_classes.add(class_key)
             label = reference.label_for("reagent_class", class_key)
-            tag(f"reagent:{class_key}", f"排除试剂：{label}", kind="exclude", source="advanced", hardness="hard")
+            tag(f"reagent:{class_key}", i18n.tr("排除试剂：{label}", "Exclude reagent: {label}", label=label),
+                kind="exclude", source="advanced", hardness="hard")
     # 排除的具体物质：entry 是 (key14, 显示名)；SMILES 读不出来时是 None，跳过
     for smiles in advanced.excluded_substances:
         entry = _substance_entry(reference, smiles)
         if entry:
             effective.excluded_substances[entry[0]] = entry[1]
-            tag(f"substance:{entry[0]}", f"排除试剂：{entry[1]}", kind="exclude", source="advanced", hardness="hard")
+            tag(f"substance:{entry[0]}", i18n.tr("排除试剂：{label}", "Exclude reagent: {label}", label=entry[1]),
+                kind="exclude", source="advanced", hardness="hard")
     # 高级参数里的“避免纯化方式”只算软偏好（扣分，不排除路线）
     for key in advanced.avoid_purifications:
         if key in reference.vocabulary.get("purification", {}):
             effective.soft_purifications.add(key)
             label = reference.label_for("purification", key)
-            tag(f"purification:{key}", f"避免{label}", kind="soft", source="advanced", hardness="soft")
+            tag(f"purification:{key}", i18n.tr("避免{label}", "Avoid purification: {label}", label=label),
+                kind="soft", source="advanced", hardness="soft")
     # 预算、货期：只生成 kind="info" 的标签，effective 里没有对应的字段，后面没有任何模块执行它们。
     # 格式 :g 去掉多余的小数：500.0 写成 500
     if advanced.budget is not None:
-        tag("budget", f"预算 ≤ {advanced.budget:g}（待有价格数据后生效）", kind="info", source="advanced")
+        tag("budget", i18n.tr("预算 ≤ {budget}（待有价格数据后生效）",
+                              "Budget ≤ {budget} (takes effect once price data is available)",
+                              budget=f"{advanced.budget:g}"), kind="info", source="advanced")
     if advanced.lead_time_days is not None:
-        tag("lead_time", f"货期 ≤ {advanced.lead_time_days} 天（待有货期数据后生效）", kind="info", source="advanced")
+        tag("lead_time", i18n.tr("货期 ≤ {days} 天（待有货期数据后生效）",
+                                 "Lead time ≤ {days} days (takes effect once lead-time data is available)",
+                                 days=advanced.lead_time_days), kind="info", source="advanced")
 
     # ---- A14 一句话要求：用户确认过的标签，逐个按 kind 处理。
     # 每个分支都先检查 value 在不在词表里（或者是不是合法的数字 / 等级），不合格的标签不生效也不显示。
@@ -393,47 +421,55 @@ def merge_constraints(constraints: Constraints, reference: ReferenceData) -> Eff
         if requirement.kind == "exclude_reagent_class" and value in reference.vocabulary.get("reagent_class", {}):
             (effective.excluded_reagent_classes if hard else effective.soft_reagent_classes).add(value)
             label = reference.label_for("reagent_class", value)
-            tag(f"reagent:{value}", f"{'排除试剂' if hard else '少用试剂'}：{label}", kind=kind, source="ai",
-                hardness=requirement.hardness)
+            text = (i18n.tr("排除试剂：{label}", "Exclude reagent: {label}", label=label) if hard
+                    else i18n.tr("少用试剂：{label}", "Limit reagent: {label}", label=label))
+            tag(f"reagent:{value}", text, kind=kind, source="ai", hardness=requirement.hardness)
         elif requirement.kind == "exclude_substance" and requirement.smiles:
             # 具体物质认的是标签里带的 smiles，不是 value（value 只是名称）
             entry = _substance_entry(reference, requirement.smiles)
             if entry:
                 (effective.excluded_substances if hard else effective.soft_substances)[entry[0]] = entry[1]
-                tag(f"substance:{entry[0]}", f"{'排除试剂' if hard else '少用试剂'}：{entry[1]}", kind=kind,
-                    source="ai", hardness=requirement.hardness)
+                text = (i18n.tr("排除试剂：{label}", "Exclude reagent: {label}", label=entry[1]) if hard
+                        else i18n.tr("少用试剂：{label}", "Limit reagent: {label}", label=entry[1]))
+                tag(f"substance:{entry[0]}", text, kind=kind, source="ai", hardness=requirement.hardness)
         elif requirement.kind == "exclude_condition" and value in reference.vocabulary.get("condition", {}):
             (effective.excluded_conditions if hard else effective.soft_conditions).add(value)
             label = reference.label_for("condition", value, short=True)
-            tag(f"condition:{value}", f"{'排除' if hard else '尽量避免'}：{label}", kind=kind, source="ai",
-                hardness=requirement.hardness)
+            text = (i18n.tr("排除：{label}", "Exclude: {label}", label=label) if hard
+                    else i18n.tr("尽量避免：{label}", "Avoid if possible: {label}", label=label))
+            tag(f"condition:{value}", text, kind=kind, source="ai", hardness=requirement.hardness)
         elif requirement.kind == "avoid_purification" and value in reference.vocabulary.get("purification", {}):
             (effective.excluded_purifications if hard else effective.soft_purifications).add(value)
             label = reference.label_for("purification", value)
-            tag(f"purification:{value}", f"{'不用' if hard else '避免'}{label}", kind=kind, source="ai",
-                hardness=requirement.hardness)
+            text = (i18n.tr("不用{label}", "Exclude purification: {label}", label=label) if hard
+                    else i18n.tr("避免{label}", "Avoid purification: {label}", label=label))
+            tag(f"purification:{value}", text, kind=kind, source="ai", hardness=requirement.hardness)
         elif requirement.kind == "safety" and value in reference.vocabulary.get("safety", {}):
             # 安全、步数、证据等级这三种不看标签上写的 hardness，一律当硬约束
             effective.excluded_safety.add(value)
             label = reference.label_for("safety", value, short=True)
-            tag(f"safety:{value}", f"排除：{label}", kind="exclude", source="ai", hardness="hard")
+            tag(f"safety:{value}", i18n.tr("排除：{label}", "Exclude: {label}", label=label), kind="exclude",
+                source="ai", hardness="hard")
         elif requirement.kind == "max_steps" and value.isdigit():
             # 和已有的上限（高级参数或档位的）取较小的那个。
             # 标签的 key 和高级参数的是同一个 "max_steps"：高级参数里也填了步数时，这里的标签不会再加
             effective.max_steps = min(effective.max_steps, int(value))
-            tag("max_steps", f"步数 ≤ {value}", kind="exclude", source="ai", hardness="hard")
+            tag("max_steps", i18n.tr("步数 ≤ {steps}", "Steps ≤ {steps}", steps=value), kind="exclude", source="ai",
+                hardness="hard")
         elif requirement.kind == "require_evidence" and value in EVIDENCE_ORDER[:3]:
             # EVIDENCE_ORDER[:3] 是 E1、E2、E3。直接覆盖高级参数里填的最低证据等级（不比较哪个更严）
             effective.min_evidence_level = value
-            tag("evidence", f"证据不低于 {value}", kind="exclude", source="ai", hardness="hard")
+            tag("evidence", i18n.tr("证据不低于 {level}", "Evidence at least {level}", level=value), kind="exclude",
+                source="ai", hardness="hard")
 
     # ---- A5 起始原料：只在这里生成标签。真正的检查在 m10_scoring.exclusion_reasons，
     # 它读的是 effective.starting_materials（上面已经原样带过来了）
     for material in constraints.starting_materials:
         entry = _substance_entry(reference, material.smiles)
         if entry:
-            prefix = "起始骨架" if material.mode == "scaffold" else "必须使用"
-            tag(f"start:{entry[0]}", f"{prefix}：{entry[1]}", kind="exclude", source="checkbox", hardness="hard")
+            text = (i18n.tr("起始骨架：{name}", "Starting scaffold: {name}", name=entry[1]) if material.mode == "scaffold"
+                    else i18n.tr("必须使用：{name}", "Must use: {name}", name=entry[1]))
+            tag(f"start:{entry[0]}", text, kind="exclude", source="checkbox", hardness="hard")
 
     # ---- A12 规模：排在最后的一个说明标签
     tag("scale", SCALE_LABELS[constraints.scale], kind="info", source="tier")

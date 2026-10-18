@@ -44,6 +44,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from syntherisk import i18n
 from syntherisk.api import schemas
 from syntherisk.api.deps import Principal, get_ctx, get_db, get_principal
 from syntherisk.context import AppContext
@@ -176,7 +177,7 @@ def depict_structure(smiles: str, width: int = Query(320, ge=60, le=1200), heigh
     # chem.mol_to_svg 用 RDKit 画图，返回 SVG 文本；SMILES 读不出来时返回 None
     svg = chem.mol_to_svg(smiles, width, height)
     if svg is None:
-        raise HTTPException(422, "结构读不出来")
+        raise HTTPException(422, i18n.tr("结构读不出来", "The structure could not be read"))
     # 用 Response 直接返回文本并指明类型；不这样写的话 FastAPI 会把字符串当成 JSON 返回
     return Response(content=svg, media_type="image/svg+xml")
 
@@ -199,7 +200,7 @@ def diff_structures(body: schemas.StructureDiffRequest, _: Principal = Depends(g
     # chem.structure_diff 用 RDKit 找两个分子的最大公共子结构；有一个 SMILES 读不出来时返回 None
     result = chem.structure_diff(body.query, body.reference)
     if result is None:
-        raise HTTPException(422, "有一个结构读不出来")
+        raise HTTPException(422, i18n.tr("有一个结构读不出来", "One of the structures could not be read"))
     return result
 
 
@@ -255,7 +256,7 @@ def material_availability(smiles: str, ctx: AppContext = Depends(get_ctx), princ
     # chem.mol_record 解析 SMILES，给出规范 SMILES、key14 等；读不出来返回 None
     record = chem.mol_record(smiles)
     if record is None:
-        raise HTTPException(422, "结构读不出来")
+        raise HTTPException(422, i18n.tr("结构读不出来", "The structure could not be read"))
     # 第一步：在本课题组的库存里按结构找（只看当前登录者看得见的条目）。
     # 库存内容是加密的，这里靠“盲索引”匹配，不用把整张表解密（见 m04_availability.InventoryService）
     inventory = InventoryService(db, principal.org_id, principal.user_id)

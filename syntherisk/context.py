@@ -37,6 +37,7 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from syntherisk import i18n
 from syntherisk.config import Settings, load_settings
 from syntherisk.db import init_db, make_engine, make_session_factory
 from syntherisk.external import LiteratureClient, OpsinClient, PubChemClient
@@ -136,19 +137,27 @@ class AppContext:
             "M1": {"rdkit": True, "pubchem": self.pubchem is not None, "opsin": self.opsin is not None},
             "M2": self.llm.describe(),
             "M3": self.retro_engine.describe(),
-            "M4": {"catalog": "内置常用试剂表；ZINC 在售目录用 python -m syntherisk.cli load-catalog 导入", "prices": "待询价"},
-            "M5": {"note": "先例库用 python -m syntherisk.cli load-precedents 导入 USPTO / ORD"},
+            # 下面几句说明文字用 i18n.tr 写：返回的还是中文，同时登记英文（GET /api/meta/modules 带 ?lang=en 时用）
+            "M4": {"catalog": i18n.tr("内置常用试剂表；ZINC 在售目录用 python -m syntherisk.cli load-catalog 导入",
+                                      "Built-in table of common reagents; import the ZINC in-stock catalog with "
+                                      "python -m syntherisk.cli load-catalog"),
+                   "prices": i18n.tr("待询价", "Price on request")},
+            "M5": {"note": i18n.tr("先例库用 python -m syntherisk.cli load-precedents 导入 USPTO / ORD",
+                                   "Import USPTO / ORD into the precedent library with "
+                                   "python -m syntherisk.cli load-precedents")},
             "M6": {"pubchem_ghs": self.pubchem is not None, "jurisdictions": settings.jurisdictions},
             "M7": {"rules": len(self.reference.condition_rules)},
             # isinstance(…, NullYieldPredictor)：现在的预测器是不是那个“不预测”的占位实现；不是才算接入了
             "M8": {"enabled": not isinstance(self.yield_predictor, NullYieldPredictor),
-                   "note": "产率模型暂未接入：产率只用文献报道值"},
+                   "note": i18n.tr("产率模型暂未接入：产率只用文献报道值",
+                                   "No yield model connected yet: yields come from literature-reported values only")},
             "M9": {"atom_economy": True, "solvent_guide": "CHEM21"},
             "M10": {"scoring_version": self.reference.scoring.get("version")},
             "M11": self.llm.describe(),
             "M12": self.llm.describe(),
             "M13": {"formats": ["pdf", "docx", "sdf", "xlsx", "csv"]},
-            "M14": {"note": "授权数据的校准用 python -m syntherisk.cli calibrate 触发"},
+            "M14": {"note": i18n.tr("授权数据的校准用 python -m syntherisk.cli calibrate 触发",
+                                    "Calibration on licensed data is triggered with python -m syntherisk.cli calibrate")},
             "MQ": {"backend": settings.queue_backend},
             # 连接串形如 "sqlite:///…/syntherisk.db" 或 "postgresql+psycopg://用户:密码@主机/库名"。
             # split(":", 1)[0] 只取第一个冒号前面的部分，所以连接串里的密码不会出现在返回值里

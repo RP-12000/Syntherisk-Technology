@@ -122,6 +122,11 @@
 | 这次分析的大模型用量 | `GET /analyses/{id}/llm-usage` |
 | 健康检查（不用登录） | `GET /health` |
 
+## 中文和英文
+
+返回的文字默认是中文。请求带 `?lang=en` 或请求头 `X-Language: en` 时，标签、原因、进度说明、报错是英文；字段名和枚举值不变。
+进度推送用 `…/events?access_token=…&lang=en`。详见 [前端对接手册](前端对接手册.md) 3.11。
+
 ## 进度推送（R3）
 
 `GET /api/analyses/{id}/events` 是 Server-Sent Events。事件依次是：

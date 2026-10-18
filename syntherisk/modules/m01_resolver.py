@@ -40,6 +40,7 @@ from dataclasses import asdict, dataclass, field
 
 from rdkit import Chem
 
+from syntherisk import i18n
 from syntherisk.external import ExternalServiceError, OpsinClient, PubChemClient, is_cas_number
 from syntherisk.modules import m01_structure as chem
 from syntherisk.reference import Compound, ReferenceData, normalize_name
@@ -62,6 +63,17 @@ _MIXTURE_HINTS = ("/", "%", "溶液", "缓冲", "solution", "buffer", " in ")
 # 整个字符串只由可见的 ASCII 字符组成（空格到 ~，十六进制 20–7E），也就是不含中文。
 # OPSIN 只认英文命名，名称通不过这个检查就不发给它。^ 和 $ 表示从头到尾都要符合
 _ASCII_NAME = re.compile(r"^[\x20-\x7e]+$")
+
+# “靠什么对上的”（Candidate.source / Resolution.source）的几种写法。i18n.tr 返回的就是中文，同时登记了英文
+# （请求带 ?lang=en 时换成英文，见 syntherisk/i18n.py）；“SMILES”“PubChem”“OPSIN”“CAS · PubChem” 本来就不含中文，不用登记
+_SOURCE_TABLE = i18n.tr("内置试剂表", "Built-in reagent table")
+_SOURCE_CAS_TABLE = i18n.tr("CAS · 内置试剂表", "CAS · built-in reagent table")
+_SOURCE_NAME_TABLE = i18n.tr("名称 · 内置试剂表", "Name · built-in reagent table")
+_SOURCE_NAME_PUBCHEM = i18n.tr("名称 · PubChem", "Name · PubChem")
+_SOURCE_NAME_OPSIN = i18n.tr("名称 · OPSIN", "Name · OPSIN")
+# PubChem、OPSIN 连不上时记的那句（lookup 的提示和 resolve_row 的疑点共用）
+_OPSIN_DOWN = i18n.tr("OPSIN 暂时连不上", "OPSIN is temporarily unreachable")
+_PUBCHEM_DOWN = i18n.tr("PubChem 暂时连不上", "PubChem is temporarily unreachable")
 
 
 @dataclass
@@ -193,14 +205,15 @@ class NameResolver:
                 for candidate in self._pubchem_candidates(query, limit):
                     add(candidate)
             except ExternalServiceError:
-                warnings.append("PubChem 暂时连不上，这次没有查它，结果可能不全")
+                warnings.append(i18n.tr("PubChem 暂时连不上，这次没有查它，结果可能不全",
+                                        "PubChem is temporarily unreachable and was skipped; results may be incomplete"))
 
         # 第 3 步：OPSIN。它是按命名规则把名字“翻译”成结构，所以查到的候选名称就是用户输入的那段文字
         if self.opsin and not candidates and _ASCII_NAME.match(query) and not is_cas_number(query):
             try:
                 add(self._from_smiles(self.opsin.name_to_smiles(query), name=query, source="OPSIN"))
             except ExternalServiceError:
-                warnings.append("OPSIN 暂时连不上")
+                warnings.append(_OPSIN_DOWN)
         return candidates, warnings
 
     def _from_compound(self, compound: Compound) -> Candidate:
@@ -218,7 +231,7 @@ class NameResolver:
             key14=record.key14,
             formula=record.formula,
             mol_weight=record.mol_weight,
-            source="内置试剂表",
+            source=_SOURCE_TABLE,
         )
 
     def _from_smiles(self, smiles: str | None, *, name: str, source: str, **extra) -> Candidate | None:
@@ -325,17 +338,17 @@ class NameResolver:
                     source="SMILES",
                 )
             # 填了 SMILES 但读不出来：记一条疑点，接着用 CAS 号和名称去认
-            notes.append("SMILES 读不出来")
+            notes.append(i18n.tr("SMILES 读不出来", "The SMILES could not be read"))
 
         # ---- 第 2 步：CAS 号
         if cas:
             # is_cas_number 检查格式和最后一位校验位（external.py）。不对的话记一条疑点，这个 CAS 号不用，接着看名称
             if not is_cas_number(cas):
-                notes.append("CAS 号的校验位不对")
+                notes.append(i18n.tr("CAS 号的校验位不对", "The CAS number's check digit is wrong"))
             else:
                 compound = library.find_by_cas(cas)
                 if compound:
-                    return self._resolved(compound, name, notes, source="CAS · 内置试剂表")
+                    return self._resolved(compound, name, notes, source=_SOURCE_CAS_TABLE)
                 # 内置表里没有，问 PubChem。found 是 (候选列表, 是不是只对应一个结果)；没查到或连不上是 None
                 found = self._pubchem_resolve(cas, notes)
                 if found:
@@ -344,7 +357,9 @@ class NameResolver:
                     # 名称：这一行填了就用填的，没填用 PubChem 上的标题；CAS 号用这一行填的
                     if unique and not notes:
                         return Resolution("matched", name=name or best.name, cas=cas, smiles=best.smiles, source="CAS · PubChem")
-                    reason = "；".join(notes) or "这个 CAS 号在 PubChem 里对应多个结构"
+                    # 几条疑点用分号连成一句；i18n.join 同时记下英文那句（各条用它们的英文、"; " 连）
+                    reason = i18n.join(notes, "；", "; ") or i18n.tr(
+                        "这个 CAS 号在 PubChem 里对应多个结构", "This CAS number maps to more than one structure in PubChem")
                     return Resolution("needs_confirmation", name=name or best.name, cas=cas, smiles=best.smiles,
                                       reason=reason, source="CAS · PubChem", notes=notes)
 
@@ -356,8 +371,8 @@ class NameResolver:
                 # 对上的是表里的正式中文名或英文名，还是别名一栏里的名字？后一种要人确认
                 primary = normalize_name(name) in {normalize_name(compound.name_zh), normalize_name(compound.name_en)}
                 if not primary:
-                    notes.append("名称是缩写、别名或商品名")
-                return self._resolved(compound, name, notes, source="名称 · 内置试剂表")
+                    notes.append(i18n.tr("名称是缩写、别名或商品名", "The name is an abbreviation, alias or trade name"))
+                return self._resolved(compound, name, notes, source=_SOURCE_NAME_TABLE)
 
             # 3b. 删掉规格说明再查一次；strip 去掉删完以后两头剩下的空格、逗号、分号。
             #     例：“乙醇 分析纯 99.7%” → “乙醇”；“Pd/C 10%” → “Pd/C”（表里钯碳的别名）。
@@ -369,8 +384,13 @@ class NameResolver:
             if compound:
                 # 这样对上的都要人确认。说明文字分两种：名称看着像混合物或溶液的，和单纯带规格的
                 mixture = any(hint in name.lower() for hint in _MIXTURE_HINTS)
-                notes.append("混合物或溶液，没有单一结构，按主要成分匹配" if mixture else "去掉规格说明后才匹配上")
-                return self._resolved(compound, name, notes, source="名称 · 内置试剂表")
+                notes.append(
+                    i18n.tr("混合物或溶液，没有单一结构，按主要成分匹配",
+                            "A mixture or solution with no single structure; matched by its main component")
+                    if mixture
+                    else i18n.tr("去掉规格说明后才匹配上", "Matched only after removing the grade / specification text")
+                )
+                return self._resolved(compound, name, notes, source=_SOURCE_NAME_TABLE)
 
             # 3c. PubChem，用原始的名称去查（不是删过规格的）
             found = self._pubchem_resolve(name, notes)
@@ -380,10 +400,11 @@ class NameResolver:
                 # PubChem 上第一个结果的标题和这一行的名称是不是同一个词（不分大小写、不管空格和连字符）
                 exact_title = normalize_name(best.name) == normalize_name(name)
                 if unique and exact_title and not notes:
-                    return Resolution("matched", name=name, cas=best.cas or cas, smiles=best.smiles, source="名称 · PubChem")
-                notes.append("按名称从 PubChem 查到，请确认是不是这个结构")
+                    return Resolution("matched", name=name, cas=best.cas or cas, smiles=best.smiles, source=_SOURCE_NAME_PUBCHEM)
+                notes.append(i18n.tr("按名称从 PubChem 查到，请确认是不是这个结构",
+                                     "Found in PubChem by name; please confirm this is the right structure"))
                 return Resolution("needs_confirmation", name=name, cas=best.cas or cas, smiles=best.smiles,
-                                  reason="；".join(notes), source="名称 · PubChem", notes=notes)
+                                  reason=i18n.join(notes, "；", "; "), source=_SOURCE_NAME_PUBCHEM, notes=notes)
 
             # 3d. OPSIN：只试纯英文的名称。它是按命名规则推出结构，所以推出来了也一律要人确认
             if self.opsin and _ASCII_NAME.match(name):
@@ -391,14 +412,16 @@ class NameResolver:
                     candidate = self._from_smiles(self.opsin.name_to_smiles(name), name=name, source="OPSIN")
                 except ExternalServiceError:
                     candidate = None
-                    notes.append("OPSIN 暂时连不上")
+                    notes.append(_OPSIN_DOWN)
                 if candidate:
-                    notes.append("由 OPSIN 按系统命名解析，请确认")
+                    notes.append(i18n.tr("由 OPSIN 按系统命名解析，请确认",
+                                         "Parsed by OPSIN from the systematic name; please confirm"))
                     return Resolution("needs_confirmation", name=name, cas=cas, smiles=candidate.smiles,
-                                      reason="；".join(notes), source="名称 · OPSIN", notes=notes)
+                                      reason=i18n.join(notes, "；", "; "), source=_SOURCE_NAME_OPSIN, notes=notes)
 
         # ---- 第 4 步：没认出来。原因是一路记下的疑点；一条疑点都没有时用后面那句笼统的话
-        reason = "；".join(notes) or "名称、CAS 号、SMILES 都没能识别"
+        reason = i18n.join(notes, "；", "; ") or i18n.tr(
+            "名称、CAS 号、SMILES 都没能识别", "The name, CAS number and SMILES could not be recognized")
         return Resolution("unrecognized", name=name, cas=cas, reason=reason, notes=notes)
 
     def _resolved(self, compound: Compound, name: str, notes: list[str], *, source: str) -> Resolution:
@@ -414,7 +437,7 @@ class NameResolver:
         """
         status = "needs_confirmation" if notes else "matched"
         return Resolution(status, name=name or compound.display_name, cas=compound.cas, smiles=compound.smiles,
-                          reason="；".join(notes), source=source, notes=notes)
+                          reason=i18n.join(notes, "；", "; "), source=source, notes=notes)
 
     def _pubchem_resolve(self, query: str, notes: list[str]) -> tuple[list[Candidate], bool] | None:
         """到 PubChem 按名称或 CAS 号查（E1 用），并说明结果唯一不唯一。
@@ -448,5 +471,5 @@ class NameResolver:
                     candidates.append(candidate)
             return (candidates, len(cids) == 1) if candidates else None
         except ExternalServiceError:
-            notes.append("PubChem 暂时连不上")
+            notes.append(_PUBCHEM_DOWN)
             return None

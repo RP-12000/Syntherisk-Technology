@@ -26,7 +26,7 @@ from typing import Any, Protocol
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.config import Settings
 
 
@@ -194,7 +194,9 @@ class LLMService:
             GET /api/meta/modules 和 python -m syntherisk.cli status 输出里的内容。
         """
         if self.provider is None:
-            return {"provider": "offline", "model": None, "note": "未配置大模型：用规则和模板生成"}
+            return {"provider": "offline", "model": None,
+                    "note": i18n.tr("未配置大模型：用规则和模板生成",
+                                    "No language model is configured: rules and templates are used instead")}
         return {"provider": self.provider.name, "model": self.provider.model}
 
     def complete_json(
@@ -231,7 +233,8 @@ class LLMService:
             modules/m12_qa.py 的 QuestionAnswerer.answer。
         """
         if self.provider is None:
-            raise LLMError("没有配置大模型")
+            # 错误说明会被业务模块拼进返回值的 note，所以用 i18n.tr 配上英文（厂商适配类里的说明也一样）
+            raise LLMError(i18n.tr("没有配置大模型", "no language model is configured"))
         try:
             response = self.provider.complete_json(system=system, user=user, schema=schema, schema_name=schema_name)
         except LLMError as exc:

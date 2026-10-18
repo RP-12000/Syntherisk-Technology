@@ -49,10 +49,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from syntherisk import models
+from syntherisk import i18n, models
 
-# 实验结果的三个取值（接口的 outcome 字段只接受这三个）和显示用的中文
-OUTCOME_LABELS = {"success": "成功", "partial": "部分成功", "failure": "失败"}
+# 实验结果的三个取值（接口的 outcome 字段只接受这三个）和显示用的中文。
+# i18n.tr 返回的就是中文，同时登记它的英文（要英文的请求，返回前由中间件换过去）
+OUTCOME_LABELS = {
+    "success": i18n.tr("成功", "Succeeded"),
+    "partial": i18n.tr("部分成功", "Partly succeeded"),
+    "failure": i18n.tr("失败", "Failed"),
+}
+# 路线树上“已做 · 结果”的三种固定写法（experiment_label 用）。整句登记，英文才对得上
+_DONE_LABELS = {
+    "success": i18n.tr("已做 · 成功", "Done · succeeded"),
+    "partial": i18n.tr("已做 · 部分成功", "Done · partly succeeded"),
+    "failure": i18n.tr("已做 · 失败", "Done · failed"),
+}
 
 
 # ---------------------------------------------------------------- 回填：保存、显示
@@ -72,11 +83,11 @@ def experiment_label(outcome: str, actual_yield: float | None) -> str:
         本文件的 record_view、apply_to_result。
     """
     if outcome == "failure":
-        return "已做 · 失败"
+        return _DONE_LABELS["failure"]
     if actual_yield is not None:
         # 格式里的 “:g” 去掉多余的小数：78.0 显示成 78，78.5 还是 78.5
-        return f"已做 · 实际 {actual_yield:g}%"
-    return f"已做 · {OUTCOME_LABELS[outcome]}"
+        return i18n.tr("已做 · 实际 {actual:g}%", "Done · actual {actual:g}%", actual=actual_yield)
+    return _DONE_LABELS[outcome]
 
 
 def record_view(record: models.ExperimentRecord) -> dict[str, Any]:

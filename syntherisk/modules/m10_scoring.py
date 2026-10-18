@@ -102,6 +102,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Iterable
 
+from syntherisk import i18n
 from syntherisk.constraints import EVIDENCE_ORDER, EffectiveConstraints
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m04_availability import PRICE_PENDING
@@ -113,7 +114,45 @@ from syntherisk.reference import ReferenceData
 # api/core.py（GET /api/scoring/config、权重预设的校验）和 api/reports.py（对比时校验权重）也用它。
 DIMENSIONS = ["literature", "operation", "safety", "availability", "yield", "green"]
 # 置信度的中文名。本文件的 evaluate_route() 和 syntherisk/cards.py 用。
-CONFIDENCE_LABELS = {"high": "高", "medium": "中", "low": "低"}
+# i18n.tr() 返回的就是中文，同时登记它的英文（见 syntherisk/i18n.py）；下面拼文字的地方都是这个写法。
+CONFIDENCE_LABELS = {
+    "high": i18n.tr("高", "High"),
+    "medium": i18n.tr("中", "Medium"),
+    "low": i18n.tr("低", "Low"),
+}
+
+
+def _plural(count: int, singular: str, plural: str | None = None) -> str:
+    """英文句子里的单复数：count 是 1 用 singular，否则用 plural（不给就在 singular 后面加 s）。
+
+    只当作 i18n.tr() 的参数用：中文模板里不写这个参数，所以中文句子不受影响。
+    """
+    return singular if count == 1 else (plural or singular + "s")
+
+
+# 下面这些固定的句子会存进分析结果（或者 analyses 表）。在这里、也就是导入本文件时就登记它们的英文，
+# 而不是等执行到用它的那一行才登记：结果可能是另一个进程（Worker）算的，或者是服务重启之前算的，
+# 读它的进程同样要查得到这些句子的英文。
+NOT_ASSESSED = i18n.tr("未评估", "Not assessed")
+NO_YIELD_RECORD = i18n.tr("无产率记录", "No yield on record")
+NO_HAZARD_DEDUCTION = i18n.tr("没有查到需要扣分的危害", "No hazards that cost points were found")
+SAFETY_NOT_ASSESSED = i18n.tr(
+    "这一步用到的物质都没有危害数据，安全这一项没有评估",
+    "None of the substances used in this step have hazard data, so safety was not assessed",
+)
+NO_OPERATION_RULE = i18n.tr("没有命中需要特殊操作的规则", "No special-handling rules were triggered")
+OPERATION_NOT_ASSESSED = i18n.tr(
+    "不知道这一步用什么试剂和条件，操作复杂度没有评估",
+    "The reagents and conditions for this step are unknown, so operational complexity was not assessed",
+)
+STATUS_UNKNOWN = i18n.tr("未知", "Unknown")
+NO_MATERIALS = i18n.tr("这一步没有需要准备的起始原料", "This step has no starting materials to source")
+LEVELS_NOT_ASSESSED = i18n.tr(
+    "先例库还没有导入数据，证据等级未评估",
+    "The precedent library has no data yet, so evidence levels were not assessed",
+)
+ALL_STEPS_SUPPORTED = i18n.tr("每一步都有文献依据", "Every step has literature support")
+NO_SPECIAL_OPERATIONS = i18n.tr("无", "None")
 
 
 def weighted_score(dimensions: dict[str, float | None], weights: dict[str, float]) -> float | None:
@@ -239,32 +278,38 @@ def base_dimensions(reaction: dict[str, Any], target_key: str, scoring: dict[str
     # 查不到危害数据的物质（data_source 是 "none"）：在依据里点名，免得被读成“安全”
     no_data = [h["name"] for h in hazards if h["data_source"] == "none"]
     # 依据文字：最多列三类扣分，每类写“物质名：危害类别的中文名”，用分号隔开
-    safety_basis = "；".join(
-        f"{'、'.join(d['substances'])}：{FLAG_LABELS.get(d['flag'], d['flag'])}" for d in deductions[:3]
-    ) or "没有查到需要扣分的危害"
+    # 每一段、连起来的整句都经过 i18n.tr / i18n.join，英文那句才拼得出来
+    safety_basis = i18n.join(
+        [
+            i18n.tr("{names}：{label}", "{names}: {label}",
+                    names=i18n.join(d["substances"]), label=FLAG_LABELS.get(d["flag"], d["flag"]))
+            for d in deductions[:3]
+        ],
+        "；", "; ",
+    ) or NO_HAZARD_DEDUCTION
     if no_data:
-        safety_basis += f"（{'、'.join(no_data[:3])} 没有危害数据）"
+        safety_basis = i18n.tr("{basis}（{names} 没有危害数据）", "{basis} (no hazard data for {names})",
+                               basis=safety_basis, names=i18n.join(no_data[:3]))
     # 投进去的物质 = 反应物和试剂（role 不是 "product" 的）
     inputs = [h for h in hazards if h.get("role") != "product"]
     if inputs and all(h["data_source"] == "none" for h in inputs) and not deductions:
         # 投进去的东西一个都查不到危害数据：不能当成“没有危害”给满分
-        safety, safety_basis = None, "这一步用到的物质都没有危害数据，安全这一项没有评估"
+        safety, safety_basis = None, SAFETY_NOT_ASSESSED
 
     # 操作这一维的依据：把命中的规则逐条列成“标签（理由）”。一条都没有时分两种情况说明：
     # M7 给了分数，说明确实没有命中规则；M7 没给分数，说明根本不知道条件
-    operation_basis = "、".join(f"{t['label']}（{t['reason']}）" for t in tags)
+    operation_basis = i18n.join(
+        [i18n.tr("{label}（{reason}）", "{label} ({reason})", label=t["label"], reason=t["reason"]) for t in tags]
+    )
     if not operation_basis:
-        operation_basis = (
-            "没有命中需要特殊操作的规则" if conditions.get("operation_score") is not None
-            else "不知道这一步用什么试剂和条件，操作复杂度没有评估"
-        )
+        operation_basis = NO_OPERATION_RULE if conditions.get("operation_score") is not None else OPERATION_NOT_ASSESSED
 
     # 产率只认文献报道的：literature 是同一反应的报道值，similar_literature 是高相似先例的报道值
     reported = yield_info.get("source") in ("literature", "similar_literature")
     return {
         "literature": {
             "score": evidence.get("literature_score"),
-            "basis": evidence.get("basis", "未评估"),
+            "basis": evidence.get("basis", NOT_ASSESSED),
             # 出处：列出来的先例的编号。一条先例都没有时，有逆合成模型的依据写 MODEL，否则写 SCORE
             "sources": [p["ref"] for p in evidence.get("precedents") or []]
             or (["MODEL"] if reaction.get("model") else ["SCORE"]),
@@ -278,33 +323,34 @@ def base_dimensions(reaction: dict[str, Any], target_key: str, scoring: dict[str
         "yield": {
             # 产率的中位数（0–100 的百分数）直接当作这一维的分数
             "score": yield_info.get("median") if reported else None,
-            "basis": yield_info.get("label", "无产率记录"),
+            "basis": yield_info.get("label", NO_YIELD_RECORD),
             "sources": yield_info.get("refs") or [],
         },
-        "green": {"score": green.get("score"), "basis": green.get("basis", "未评估"), "sources": ["CALC"]},
+        "green": {"score": green.get("score"), "basis": green.get("basis", NOT_ASSESSED), "sources": ["CALC"]},
     }
 
 
 # 危害类别（m06_safety 里的 flag）-> 中文名，写安全这一维的依据时用（base_dimensions）。
 # 前 14 个是 GHS 危险性说明归出来的类别，最后两个是管制清单给的。
 # 扣分只看 [safety.penalties] 里有的类别；表里查不到的类别，依据里直接显示英文键。
+# 每个中文名都用 i18n.tr() 登记了英文（导入本文件时就登记好）。
 FLAG_LABELS = {
-    "acute_toxic_12": "剧毒（急性毒性 1–2 类）",
-    "acute_toxic_3": "有毒（急性毒性 3 类）",
-    "cmr_1": "致癌、致突变或生殖毒性",
-    "cmr_2": "疑似致癌、致突变或生殖毒性",
-    "explosive": "易爆",
-    "pyrophoric": "遇空气自燃",
-    "extremely_flammable": "极易燃",
-    "highly_flammable": "高度易燃",
-    "flammable": "易燃",
-    "water_reactive": "遇水放出易燃气体",
-    "corrosive": "腐蚀",
-    "oxidizer": "氧化剂",
-    "organ_toxicity": "损害器官",
-    "sensitizer": "致敏",
-    "controlled_strict": "管制化学品",
-    "controlled_basic": "管制化学品（一般管理）",
+    "acute_toxic_12": i18n.tr("剧毒（急性毒性 1–2 类）", "Highly toxic (acute toxicity Cat. 1–2)"),
+    "acute_toxic_3": i18n.tr("有毒（急性毒性 3 类）", "Toxic (acute toxicity Cat. 3)"),
+    "cmr_1": i18n.tr("致癌、致突变或生殖毒性", "Carcinogenic, mutagenic or toxic to reproduction (CMR)"),
+    "cmr_2": i18n.tr("疑似致癌、致突变或生殖毒性", "Suspected CMR"),
+    "explosive": i18n.tr("易爆", "Explosive"),
+    "pyrophoric": i18n.tr("遇空气自燃", "Pyrophoric"),
+    "extremely_flammable": i18n.tr("极易燃", "Extremely flammable"),
+    "highly_flammable": i18n.tr("高度易燃", "Highly flammable"),
+    "flammable": i18n.tr("易燃", "Flammable"),
+    "water_reactive": i18n.tr("遇水放出易燃气体", "Releases flammable gas on contact with water"),
+    "corrosive": i18n.tr("腐蚀", "Corrosive"),
+    "oxidizer": i18n.tr("氧化剂", "Oxidizer"),
+    "organ_toxicity": i18n.tr("损害器官", "Organ toxicity"),
+    "sensitizer": i18n.tr("致敏", "Sensitizer"),
+    "controlled_strict": i18n.tr("管制化学品", "Controlled chemical"),
+    "controlled_basic": i18n.tr("管制化学品（一般管理）", "Controlled chemical (basic controls)"),
 }
 
 
@@ -372,7 +418,7 @@ def step_materials(result: dict[str, Any], route: dict[str, Any], reaction: dict
                     "smiles": molecule["smiles"],
                     "role": role,
                     "status": status,
-                    "label": availability.get("label") if status != "unknown" else "未知",
+                    "label": availability.get("label") if status != "unknown" else STATUS_UNKNOWN,
                 }
             )
     return materials
@@ -408,9 +454,11 @@ def _availability_dimension(materials: list[dict[str, Any]], stock_source: str, 
     # 只算状态明确的物料；unknown 的不算
     known = [m for m in materials if m["status"] in values]
     if not known:
-        return {"score": None, "basis": "这一步没有需要准备的起始原料", "sources": ["STOCK"]}
+        return {"score": None, "basis": NO_MATERIALS, "sources": ["STOCK"]}
     score = sum(values[m["status"]] for m in known) / len(known)
-    basis = "、".join(f"{m['name']}（{m['label']}）" for m in known[:5])
+    basis = i18n.join(
+        [i18n.tr("{name}（{label}）", "{name} ({label})", name=m["name"], label=m["label"]) for m in known[:5]]
+    )
     return {"score": round(score, 1), "basis": basis, "sources": ["STOCK"]}
 
 
@@ -435,17 +483,19 @@ def _soft_hits(result: dict[str, Any], reaction: dict[str, Any], effective: Effe
     # M7 给这一步打的操作标签：标签的 constraint / purification 在软偏好里，就算命中
     for tag in (reaction.get("conditions") or {}).get("tags") or []:
         if tag.get("constraint") in effective.soft_conditions:
-            hits.append(f"尽量避免：{tag['label']}")
+            hits.append(i18n.tr("尽量避免：{label}", "Avoid if possible: {label}", label=tag["label"]))
         if tag.get("purification") in effective.soft_purifications:
-            hits.append(f"偏好：避免{tag['label']}")
+            hits.append(i18n.tr("偏好：避免{label}", "Preference: avoid {label}", label=tag["label"]))
     # 这一步的反应物和试剂：点名要少用的物质，或者属于要少用的试剂类别
     for molecule in _step_substances(result, reaction):
         if molecule["key14"] in effective.soft_substances:
-            hits.append(f"少用试剂：{effective.soft_substances[molecule['key14']]}")
+            hits.append(i18n.tr("少用试剂：{name}", "Use sparingly: {name}",
+                                name=effective.soft_substances[molecule["key14"]]))
         for class_key in effective.soft_reagent_classes:
             # reagent_class_matches()：按 data/vocabulary.toml 里这个类别的物质清单和 SMARTS 判断
             if reference.reagent_class_matches(class_key, molecule["smiles"]):
-                hits.append(f"少用试剂：{reference.label_for('reagent_class', class_key)}")
+                hits.append(i18n.tr("少用试剂：{name}", "Use sparingly: {name}",
+                                    name=reference.label_for("reagent_class", class_key)))
     # set() 去掉重复（同一类试剂在这一步出现两次只算一条），sorted() 让顺序固定
     return sorted(set(hits))
 
@@ -505,7 +555,7 @@ def _route_confidence(steps: list[dict[str, Any]], scoring: dict[str, Any]) -> t
 
     def numbers(items: list[dict[str, Any]]) -> str:
         """把几步的序号拼成“1、3”这样的文字，写理由时用。"""
-        return "、".join(str(s["index"]) for s in items)
+        return i18n.join([str(s["index"]) for s in items])
 
     low = [s for s in steps if s["confidence"] == "low"]
     medium = [s for s in steps if s["confidence"] == "medium"]
@@ -513,18 +563,25 @@ def _route_confidence(steps: list[dict[str, Any]], scoring: dict[str, Any]) -> t
         # 低置信度有两种来历，理由分开写：没有文献先例（E4），或者依据太少（thin）。同一步可能两种都占
         no_precedent = [s for s in low if s["evidence_level"] == "E4"]
         thin = [s for s in low if s["thin"]]
-        reasons = [f"第 {numbers(no_precedent)} 步无文献先例"] if no_precedent else []
-        reasons += [f"第 {numbers(thin)} 步多数评分项没有数据"] if thin else []
+        # 英文句子分单复数（Step 2 has / Steps 1, 3 have）；word、verb 两个参数只有英文模板用
+        reasons = [i18n.tr("第 {numbers} 步无文献先例", "{word} {numbers} {verb} no literature precedent",
+                           numbers=numbers(no_precedent), word=_plural(len(no_precedent), "Step"),
+                           verb=_plural(len(no_precedent), "has", "have"))] if no_precedent else []
+        reasons += [i18n.tr("第 {numbers} 步多数评分项没有数据", "{word} {numbers} {verb} no data for most scoring dimensions",
+                            numbers=numbers(thin), word=_plural(len(thin), "Step"),
+                            verb=_plural(len(thin), "has", "have"))] if thin else []
         # 个数够多，或者在路线里占的比例够大，整条路线才算“低”；否则算“中”
         too_many = len(low) >= int(config["low_steps_for_low"]) or len(low) / len(steps) > float(config["low_fraction_for_low"])
-        return ("low" if too_many else "medium"), "；".join(reasons)
+        return ("low" if too_many else "medium"), i18n.join(reasons, "；", "; ")
     if all(step["evidence_level"] is None for step in steps):
-        return "medium", "先例库还没有导入数据，证据等级未评估"
+        return "medium", LEVELS_NOT_ASSESSED
     # 只有相似先例的步骤够多，或者在短路线里占的比例够大（一步的路线只有一个低相似先例，不能算“高”）
     medium_share = len(medium) / len(steps)
     if len(medium) >= int(config["medium_steps_for_medium"]) or medium_share > float(config.get("medium_fraction_for_medium", 1)):
-        return "medium", f"第 {numbers(medium)} 步只有相似先例"
-    return "high", "每一步都有文献依据"
+        return "medium", i18n.tr("第 {numbers} 步只有相似先例", "{word} {numbers} {verb} only similar precedents",
+                                 numbers=numbers(medium), word=_plural(len(medium), "Step"),
+                                 verb=_plural(len(medium), "has", "have"))
+    return "high", ALL_STEPS_SUPPORTED
 
 
 def _weakest_link(steps, route_dimensions, weights, scoring) -> dict[str, Any] | None:
@@ -567,9 +624,17 @@ def _weakest_link(steps, route_dimensions, weights, scoring) -> dict[str, Any] |
     main = max(losses, key=losses.get) if losses else None
     # 接近满分（≥ 95）的其他维度，最多提两项，放在句子前半截
     full = [labels[d] for d, value in weakest["dimensions"].items() if value is not None and value >= 95 and d != main][:2]
-    text = f"{'、'.join(full)}{'两项' if len(full) == 2 else '一项'}接近满分，" if full else ""
+    # 前半截、后半截各自经过 i18n.tr，再用 tr 合成整句：对照是按整句匹配的
+    head = ""
+    if len(full) == 2:
+        head = i18n.tr("{names}两项接近满分，", "{names} are both close to full marks. ", names=i18n.join(full, "、", " and "))
+    elif full:
+        head = i18n.tr("{names}一项接近满分，", "{names} is close to full marks. ", names=full[0])
+    tail = ""
     if main:
-        text += f"扣分主要在{labels[main]}：{details[main]['basis']}。"
+        tail = i18n.tr("扣分主要在{dimension}：{basis}。", "Most points are lost on {dimension}: {basis}.",
+                       dimension=labels[main], basis=details[main]["basis"])
+    text = i18n.tr("{head}{tail}", "{head}{tail}", head=head, tail=tail) if head and tail else head + tail
     return {
         "step_index": weakest["index"],
         "step_key": weakest["key"],
@@ -577,7 +642,12 @@ def _weakest_link(steps, route_dimensions, weights, scoring) -> dict[str, Any] |
         "score": weakest["score"],
         "main_dimension": main,
         "text": text,
-        "suggestion": scoring["weakest_link"]["suggestion"].format(step=weakest["index"]),
+        # 建议的模板在 data/scoring.toml 的 [weakest_link]；那里有 suggestion_en 就用它当英文模板
+        "suggestion": i18n.tr(
+            scoring["weakest_link"]["suggestion"],
+            scoring["weakest_link"].get("suggestion_en") or "Run a 50 mg trial first to verify step {step}",
+            step=weakest["index"],
+        ),
     }
 
 
@@ -664,7 +734,9 @@ def _summary(result, route, steps) -> dict[str, Any]:
         "inventory_count": f"{in_inventory}/{len(materials)}" if materials else None,
         # most_common()：Counter 按次数从多到少给出 (条件编号, 步数)
         "special_operations": [
-            {"key": key, "label": labels[key], "steps": count, "text": f"{labels[key]} {count} 步"}
+            {"key": key, "label": labels[key], "steps": count,
+             "text": i18n.tr("{label} {count} 步", "{label}: {count} {word}",
+                             label=labels[key], count=count, word=_plural(count, "step"))}
             for key, count in operations.most_common()
         ],
     }
@@ -858,7 +930,9 @@ def exclusion_reasons(
 
     # ---- 步数上限（effective.max_steps：档位的上限，被 A13 / A14 覆盖或收紧以后的数）
     if len(steps) > effective.max_steps:
-        add("max_steps", f"共 {len(steps)} 步，超过“{effective.complexity_label}”档的 {effective.max_steps} 步上限")
+        add("max_steps", i18n.tr("共 {count} 步，超过“{level}”档的 {limit} 步上限",
+                                 "{count} steps in total, over the {limit}-step limit of the “{level}” setting",
+                                 count=len(steps), level=effective.complexity_label, limit=effective.max_steps))
 
     # ---- 证据等级。只有每一步都评过等级才检查：先例库没导入时等级是 None，不能当成“没有先例”
     levels = [(index, (reaction.get("evidence") or {}).get("level")) for index, reaction in steps]
@@ -866,24 +940,34 @@ def exclusion_reasons(
         # 没有先例（E4）的步骤太多
         without = [index for index, level in levels if level == "E4"]
         if len(without) > effective.max_steps_without_precedent:
-            numbers = "、".join(str(i) for i in without)
-            add("precedent", f"第 {numbers} 步没有文献先例，“{effective.complexity_label}”档最多允许 "
-                             f"{effective.max_steps_without_precedent} 步")
+            numbers = i18n.join([str(i) for i in without])
+            add("precedent", i18n.tr("第 {numbers} 步没有文献先例，“{level}”档最多允许 {limit} 步",
+                                     "{word} {numbers} {verb} no literature precedent; the “{level}” setting allows at most {limit}",
+                                     numbers=numbers, level=effective.complexity_label,
+                                     limit=effective.max_steps_without_precedent,
+                                     word=_plural(len(without), "Step"), verb=_plural(len(without), "has", "have")))
         if effective.min_evidence_level:
             # EVIDENCE_ORDER 是 ["E1", "E2", "E3", "E4"]，序号越大证据越弱。序号比要求的大，就是低于要求
             limit = EVIDENCE_ORDER.index(effective.min_evidence_level)
             weak = [index for index, level in levels if EVIDENCE_ORDER.index(level) > limit]
             if weak:
-                numbers = "、".join(str(i) for i in weak)
-                add("evidence", f"第 {numbers} 步的证据等级低于 {effective.min_evidence_level}")
+                numbers = i18n.join([str(i) for i in weak])
+                add("evidence", i18n.tr("第 {numbers} 步的证据等级低于 {level}",
+                                        "{word} {numbers} {verb} an evidence level below {level}",
+                                        numbers=numbers, level=effective.min_evidence_level,
+                                        word=_plural(len(weak), "Step"), verb=_plural(len(weak), "has", "have")))
 
     for index, reaction in steps:
         # ---- 操作条件和纯化方式：看 M7 给这一步打的标签
         for tag in (reaction.get("conditions") or {}).get("tags") or []:
             if tag.get("constraint") in effective.excluded_conditions:
-                add(f"condition:{tag['constraint']}", f"第 {index} 步需要{tag['label']}", step_index=index)
+                add(f"condition:{tag['constraint']}",
+                    i18n.tr("第 {index} 步需要{label}", "Step {index} requires: {label}", index=index, label=tag["label"]),
+                    step_index=index)
             if tag.get("purification") in effective.excluded_purifications:
-                add(f"purification:{tag['purification']}", f"第 {index} 步需要{tag['label']}", step_index=index)
+                add(f"purification:{tag['purification']}",
+                    i18n.tr("第 {index} 步需要{label}", "Step {index} requires: {label}", index=index, label=tag["label"]),
+                    step_index=index)
 
         # ---- 安全要求（A11）：看 M6 给这一步每个物质标的危害类别（flags）
         for hazard in reaction.get("hazards") or []:
@@ -892,28 +976,45 @@ def exclusion_reasons(
             # statements_behind()（m06_safety）：这个物质凭哪几条危险性说明归到这一类，写进原因里
             if "acute_toxic" in effective.excluded_safety and "acute_toxic_12" in hazard["flags"]:
                 add("safety:acute_toxic",
-                    f"第 {index} 步用到剧毒物质 {hazard['name']}（{statements_behind(hazard, 'acute_toxic_12')}）",
+                    i18n.tr("第 {index} 步用到剧毒物质 {name}（{statements}）",
+                            "Step {index} uses a highly toxic substance: {name} ({statements})",
+                            index=index, name=hazard["name"], statements=statements_behind(hazard, "acute_toxic_12")),
                     step_index=index, substance=hazard["name"])
             if "cmr" in effective.excluded_safety and "cmr_1" in hazard["flags"]:
                 add("safety:cmr",
-                    f"第 {index} 步用到致癌、致突变或生殖毒性物质 {hazard['name']}（{statements_behind(hazard, 'cmr_1')}）",
+                    i18n.tr("第 {index} 步用到致癌、致突变或生殖毒性物质 {name}（{statements}）",
+                            "Step {index} uses a CMR substance (carcinogenic, mutagenic or toxic to reproduction): {name} ({statements})",
+                            index=index, name=hazard["name"], statements=statements_behind(hazard, "cmr_1")),
                     step_index=index, substance=hazard["name"])
             if "controlled" in effective.excluded_safety and "controlled_strict" in hazard["flags"]:
                 # 列出它在哪些清单上属于严格管制，形如“CN 第二类、US List I”；集合去重，排序后顺序固定
-                lists = "、".join(sorted({f"{c['jurisdiction']} {c['category']}" for c in hazard["controlled"]
-                                         if c["severity"] == "strict"}))
-                add("safety:controlled", f"第 {index} 步用到管制化学品 {hazard['name']}（{lists}）",
+                # 每一项也经过 i18n.tr：category 是清单里的中文类别名，登记了英文的话英文句子里用英文
+                lists = i18n.join(sorted({
+                    i18n.tr("{jurisdiction} {category}", "{jurisdiction} {category}",
+                            jurisdiction=c["jurisdiction"], category=c["category"])
+                    for c in hazard["controlled"] if c["severity"] == "strict"
+                }))
+                add("safety:controlled",
+                    i18n.tr("第 {index} 步用到管制化学品 {name}（{lists}）",
+                            "Step {index} uses a controlled chemical: {name} ({lists})",
+                            index=index, name=hazard["name"], lists=lists),
                     step_index=index, substance=hazard["name"])
 
         # ---- 用户排除的物质和试剂类别（A13、A14）：看这一步的反应物和试剂
         for molecule in _step_substances(result, reaction):
             name = molecule.get("name") or molecule["formula"]
             if molecule["key14"] in effective.excluded_substances:
-                add(f"substance:{molecule['key14']}", f"第 {index} 步用到你排除的试剂 {name}", step_index=index)
+                add(f"substance:{molecule['key14']}",
+                    i18n.tr("第 {index} 步用到你排除的试剂 {name}", "Step {index} uses a reagent you excluded: {name}",
+                            index=index, name=name),
+                    step_index=index)
             for class_key in effective.excluded_reagent_classes:
                 if reference.reagent_class_matches(class_key, molecule["smiles"]):
                     label = reference.label_for("reagent_class", class_key)
-                    add(f"reagent:{class_key}", f"第 {index} 步用到{label}：{name}", step_index=index)
+                    add(f"reagent:{class_key}",
+                        i18n.tr("第 {index} 步用到{label}：{name}", "Step {index} uses a reagent from an excluded class ({label}): {name}",
+                                index=index, label=label, name=name),
+                        step_index=index)
 
     # ---- 原料来源（A8）：只看这条路线的起始原料（叶子），不看试剂；ubiquitous 的（水）不用准备
     leaves = [molecules[key] for key in route["leaf_keys"]]
@@ -923,14 +1024,14 @@ def exclusion_reasons(
         # “仅用库存”：只要有一个起始原料不在库存里，就排除
         missing = [m for m in needed if statuses[m["key14"]].get("status") != "inventory"]
         if missing:
-            names = "、".join(m.get("name") or m["formula"] for m in missing[:5])
-            add("stock", f"原料不在库存里：{names}")
+            names = i18n.join([m.get("name") or m["formula"] for m in missing[:5]])
+            add("stock", i18n.tr("原料不在库存里：{names}", "Starting materials not in inventory: {names}", names=names))
     else:
         # 另外两档：库存里没有可以买，只有买不到的才排除
         missing = [m for m in needed if statuses[m["key14"]].get("status") == "unavailable"]
         if missing:
-            names = "、".join(m.get("name") or m["formula"] for m in missing[:5])
-            add("stock", f"原料买不到：{names}")
+            names = i18n.join([m.get("name") or m["formula"] for m in missing[:5]])
+            add("stock", i18n.tr("原料买不到：{names}", "Starting materials not purchasable: {names}", names=names))
 
     # ---- 指定的起始原料或骨架（A5）
     for material in effective.starting_materials:
@@ -945,21 +1046,27 @@ def exclusion_reasons(
             satisfied = any(pattern is not None and chem.has_substructure(m["smiles"], pattern) for m in leaves)
         if not satisfied:
             name = reference.compounds.name_for(material.smiles) or material.smiles
-            what = "没有用到指定的原料" if material.mode == "must_use" else "不是从指定的骨架出发"
-            add(f"start:{wanted}", f"{what}：{name}")
+            if material.mode == "must_use":
+                label = i18n.tr("没有用到指定的原料：{name}", "Does not use the required starting material: {name}", name=name)
+            else:
+                label = i18n.tr("不是从指定的骨架出发：{name}", "Does not start from the specified scaffold: {name}", name=name)
+            add(f"start:{wanted}", label)
 
     # ---- 用户在路线树上右键排除的（B11）。这些原因的 user 是 True，编号是 user:<排除记录的 id>
     for exclusion in user_exclusions:
         if exclusion["type"] == "branch" and exclusion["step_key"] in route["step_keys"]:
             # 排除分支：这条路线里有被排除的那一步
             index = route["step_keys"].index(exclusion["step_key"]) + 1
-            reasons.append({"constraint": f"user:{exclusion['id']}", "label": f"你排除了这个分支：第 {index} 步 {exclusion['name']}",
+            reasons.append({"constraint": f"user:{exclusion['id']}",
+                            "label": i18n.tr("你排除了这个分支：第 {index} 步 {name}", "You excluded this branch: step {index}, {name}",
+                                             index=index, name=exclusion["name"]),
                             "user": True, "step_index": index})
         elif exclusion["type"] == "substance":
             # 排除试剂：这条路线有任何一步把它当反应物或试剂
             used = any(exclusion["key14"] in (*r["reactants"], *r["reagents"]) for _, r in steps)
             if used:
-                reasons.append({"constraint": f"user:{exclusion['id']}", "label": f"你排除了试剂：{exclusion['name']}",
+                reasons.append({"constraint": f"user:{exclusion['id']}",
+                                "label": i18n.tr("你排除了试剂：{name}", "You excluded this reagent: {name}", name=exclusion["name"]),
                                 "user": True})
     return reasons
 
@@ -1112,7 +1219,7 @@ def compare_routes(result: dict[str, Any], route_ids: list[str], scoring: dict[s
                 "n_steps": summary["n_steps"],
                 "literature_coverage": summary["literature_coverage"],
                 "inventory_coverage": summary["inventory_coverage"],
-                "special_operations": "、".join(op["text"] for op in summary["special_operations"]) or "无",
+                "special_operations": i18n.join([op["text"] for op in summary["special_operations"]]) or NO_SPECIAL_OPERATIONS,
                 "green": route["dims_avg"]["green"],
                 "material_cost": summary["material_cost_label"],
                 "confidence": route["confidence_label"],

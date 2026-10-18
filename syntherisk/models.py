@@ -345,6 +345,9 @@ class Analysis(Base):
     # 用户是否请求了取消。取消接口对“正在跑”的分析把它置为 True，流水线在各个检查点查到后停下；
     # 重跑和重新搜索时接口把它改回 False
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 提交分析时界面用的语言：zh 或 en（旧数据是 NULL，当成 zh）。只影响大模型写说明时用哪种语言；
+    # 标签、原因这些固定的文字两种语言都有，返回时按请求里的语言挑（见 i18n.py）
+    language: Mapped[str | None] = mapped_column(String(8), nullable=True)
     # 这一行被流水线跑过几次：每次开始跑加 1；重跑接口（…/retry）把它清零。两处用到：
     # 服务重启恢复时，已经跑过 2 次的不再重试；逆合成搜索的轮数按 (1 + 已重跑次数) 放大
     attempts: Mapped[int] = mapped_column(Integer, default=0)

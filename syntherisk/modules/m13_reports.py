@@ -58,6 +58,7 @@ from xml.sax.saxutils import escape
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
+from syntherisk import i18n
 from syntherisk.cards import build_card
 from syntherisk.constraints import SCALE_LABELS
 from syntherisk.modules import m01_structure as chem
@@ -151,6 +152,10 @@ def default_filename(target_name: str, route_name: str, extension: str) -> str:
     谁在用：
         api/reports.py 的 create_report()（F3）和 export_comparison()（D4）。
     """
+    # 文件名是当场起的，不走“先存中文、返回时再换”的对照（下载时的响应头不经过那一步）：
+    # 这次请求要英文时，目标物和路线的名字有英文的就直接用英文。中文请求时两个名字原样
+    if i18n.current_lang() == "en":
+        target_name, route_name = i18n.en_of(target_name), i18n.en_of(route_name)
     stem = f"{target_name}_{route_name}_{date.today().isoformat()}"
     return safe_filename(f"{stem}.{extension}")
 
@@ -255,6 +260,11 @@ def bill_of_materials(result: dict[str, Any], route: dict[str, Any], target_mg: 
     # 从目标分子开始：毫克 ÷ 分子量 = 毫摩尔
     walk(route["tree"], target_mg / target["mol_weight"], None)
 
+    # 清单里的几个固定用语。i18n.tr 返回的就是中文，同时登记英文，接口返回这份清单时按请求的语言换；
+    # 报告正文（build_blocks）用的也是这份清单，那里一直是中文
+    role_starting = i18n.tr("起始原料", "Starting material")
+    role_reagent = i18n.tr("试剂", "Reagent")
+    unknown = i18n.tr("未知", "Unknown")
     # 起始原料：每样一行，毫摩尔 × 分子量 = 毫克
     rows = []
     for key, mmol in needs.items():
@@ -265,12 +275,12 @@ def bill_of_materials(result: dict[str, Any], route: dict[str, Any], target_mg: 
         rows.append(
             {
                 "name": molecule.get("name") or molecule["formula"],
-                "role": "起始原料",
+                "role": role_starting,
                 "steps": sorted(used_in.get(key, [])),
                 "mol_weight": molecule["mol_weight"],
                 "mmol": round(mmol, 4),
                 "mg": round(mmol * molecule["mol_weight"], 2),
-                "source": availability.get("label", "未知"),
+                "source": availability.get("label", unknown),
             }
         )
     # 试剂：只知道哪一步用了它，不知道用多少。iter_reaction_nodes() 按实验顺序给出路线树里的每个反应节点
@@ -284,19 +294,21 @@ def bill_of_materials(result: dict[str, Any], route: dict[str, Any], target_mg: 
         rows.append(
             {
                 "name": molecule.get("name") or molecule["formula"],
-                "role": "试剂",
+                "role": role_reagent,
                 "steps": sorted(steps),
                 "mol_weight": molecule["mol_weight"],
                 "mmol": None,
                 "mg": None,
-                "source": availability.get("label") if availability.get("status") != "unavailable" else "未知",
+                "source": availability.get("label") if availability.get("status") != "unavailable" else unknown,
             }
         )
     return {
         "target_mg": target_mg,
         "rows": rows,
         "assumed_full_yield_steps": sorted(set(assumed)),
-        "note": "按 1:1 化学计量估算，没有计入过量和损耗；试剂用量请参照文献当量。",
+        "note": i18n.tr("按 1:1 化学计量估算，没有计入过量和损耗；试剂用量请参照文献当量。",
+                        "Estimated at 1:1 stoichiometry, with no allowance for excess or losses; "
+                        "for reagent amounts, follow the equivalents given in the literature."),
     }
 
 

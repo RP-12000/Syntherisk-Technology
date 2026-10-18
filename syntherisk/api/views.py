@@ -34,6 +34,7 @@ result 字典是什么样的（由 pipeline.py 一个阶段一个阶段填出来
 本文件里有什么（按阅读顺序）：
     SORT_OPTIONS             结果页的六种排序方式
     iso                      时间 → ISO 8601 字符串
+    _target_view             目标分子：按语言处理存着的立体化学提示
     analysis_view            一次分析的状态和进度
     analysis_list_item       列表里的一条分析
     _evidence_text           路线卡片上概括文献依据的那句话
@@ -52,7 +53,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.constraints import Constraints, merge_constraints
 from syntherisk.context import AppContext
 from syntherisk.modules import m01_structure as chem
@@ -66,18 +67,37 @@ from syntherisk.routes import build_graph
 #   steps         步数少的在前
 #   safety、availability、literature、green   这个维度各步的平均分高的在前
 SORT_OPTIONS = {
-    "score": "综合",
-    "steps": "最短",
-    "safety": "最安全",
-    "availability": "原料最好拿",
-    "literature": "文献最充分",
-    "green": "最绿色",
+    "score": i18n.tr("综合", "Overall"),
+    "steps": i18n.tr("最短", "Shortest"),
+    "safety": i18n.tr("最安全", "Safest"),
+    "availability": i18n.tr("原料最好拿", "Easiest to source"),
+    "literature": i18n.tr("文献最充分", "Best documented"),
+    "green": i18n.tr("最绿色", "Greenest"),
 }
 
 
 # 时间 → 带时区的 ISO 8601 字符串，返回给前端的时间都经过它。实现在 models.py（和 utcnow 放在一起），
 # m04、m14 也直接用那一个；这里留一个同名的入口，api/core.py、api/reports.py 照旧从本文件导入。
 iso = models.iso
+
+
+def _target_view(target: dict[str, Any]) -> dict[str, Any]:
+    """analyses.target 里存的目标分子，整理成返回给前端的样子。
+
+    target 里除了 smiles、key14、name、formula、mol_weight、messages，还存着 messages_en：
+    提交时记下的那几句立体化学提示的英文（见 api/analyses.py 的 create_analysis）。
+    参数：
+        target  analysis.target（解密后的字典）。
+    返回：
+        中文请求：去掉以 _en 结尾的键，和以前的格式一样；
+        英文请求：原样返回，之后 i18n.localize() 会用 messages_en 顶替 messages，并把 messages_en 去掉
+        （字典里 "x_en" 顶替 "x" 是 localize 的约定）。
+    谁在用：
+        本文件的 analysis_view、analysis_list_item。
+    """
+    if i18n.current_lang() == "en":
+        return target
+    return {key: value for key, value in target.items() if not key.endswith("_en")}
 
 
 def analysis_view(analysis: models.Analysis, ctx: AppContext) -> dict[str, Any]:
@@ -144,7 +164,7 @@ def analysis_view(analysis: models.Analysis, ctx: AppContext) -> dict[str, Any]:
         "stage_count": len(stages),
         "stages": stages,
         # target、constraints 在数据库里是加密的，这里已经是解密后的字典
-        "target": analysis.target,
+        "target": _target_view(analysis.target),
         "constraints": constraints.model_dump(),
         # 每次现算：把提交时的约束合并成“实际执行的那一份”（流水线第 1 阶段做的是同一件事），
         # 取出其中给界面显示的标签
@@ -190,7 +210,7 @@ def analysis_list_item(analysis: models.Analysis) -> dict[str, Any]:
         "id": analysis.id,
         "project_id": analysis.project_id,
         "status": analysis.status,
-        "target": analysis.target,
+        "target": _target_view(analysis.target),
         "route_count": len(result.get("routes") or []),
         "best_route": {"name": best["name"], "score": best["score"]} if best else None,
         "created_at": iso(analysis.created_at),
@@ -213,10 +233,14 @@ def _evidence_text(route: dict[str, Any]) -> str:
     """
     levels = [step["evidence_level"] for step in route["steps"]]
     if any(level is None for level in levels):
-        return "证据等级未评估"
+        return i18n.tr("证据等级未评估", "Evidence level not assessed")
     # 数一数有几步是 E4
     without = levels.count("E4")
-    return "每步都有文献" if not without else f"{without} 步没有先例"
+    if not without:
+        return i18n.tr("每步都有文献", "Every step has a literature precedent")
+    # 英文要分单复数（1 step / 2 steps），所以按步数挑英文模板；中文还是原来那一句
+    return i18n.tr("{n} 步没有先例", "{n} step without precedent" if without == 1 else "{n} steps without precedent",
+                   n=without)
 
 
 def route_card(route: dict[str, Any]) -> dict[str, Any]:
@@ -262,7 +286,7 @@ def route_card(route: dict[str, Any]) -> dict[str, Any]:
         "id": route["id"],
         "name": route["name"],
         # 有名次才加“路线 N · ”的前缀
-        "title": f"路线 {rank} · {route['name']}" if rank else route["name"],
+        "title": i18n.tr("路线 {rank} · {name}", "Route {rank} · {name}", rank=rank, name=route["name"]) if rank else route["name"],
         "rank": rank,
         # 分数、置信度、最低星数都是 M10 的 evaluate_route 写在路线上的，这里原样带出
         "score": route["score"],
@@ -387,7 +411,7 @@ def tree_view(result: dict[str, Any], route: dict[str, Any], node: dict[str, Any
                 "step_key": reaction_node["step_key"],
                 "step_index": reaction_node["step_index"],
                 "name": reaction["name"],
-                "label": f"第 {reaction_node['step_index']} 步 · {reaction['name']}",
+                "label": i18n.tr("第 {n} 步 · {name}", "Step {n} · {name}", n=reaction_node["step_index"], name=reaction["name"]),
                 # 分数、星数、证据等级取自这条路线的评分结果（同一步反应在不同路线里分数可以不同）
                 "score": step.get("score"),
                 "stars": step.get("stars"),

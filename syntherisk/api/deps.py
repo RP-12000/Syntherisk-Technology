@@ -49,7 +49,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from syntherisk import models
+from syntherisk import i18n, models
 from syntherisk.context import AppContext
 from syntherisk.security import decode_access_token
 
@@ -163,7 +163,7 @@ def authenticate(session: Session, ctx: AppContext, token: str | None) -> Princi
         api/analyses.py 的 stream_events（进度推送接口，令牌可以放在网址里，所以它自己调）。
     """
     # 先把要抛的 401 准备好，下面两处都用它
-    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, "请先登录", headers={"WWW-Authenticate": "Bearer"})
+    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, i18n.tr("请先登录", "Please sign in"), headers={"WWW-Authenticate": "Bearer"})
     # 解开令牌。签名不对或者已经过期时 decode_access_token 返回 None。
     # 解出来的 claims 是个字典：sub 是用户编号，org 是组织编号（见 security.create_access_token）
     claims = decode_access_token(token, ctx.settings.secret_key) if token else None
@@ -222,7 +222,7 @@ def require_admin(principal: Principal = Depends(get_principal)) -> Principal:
         api/core.py 的 add_member（管理员给组里的同学开账号）。
     """
     if not principal.is_admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "只有课题组管理员可以做这个操作")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, i18n.tr("只有课题组管理员可以做这个操作", "Only group admins can do this"))
     return principal
 
 
@@ -235,7 +235,8 @@ def _owned(session: Session, model, object_id: str, org_id: str, what: str):
                    （现在用到的是 models.Project 和 models.Analysis）。
         object_id  主键，也就是网址里的 project_id、analysis_id。
         org_id     当前登录者所在组织的编号。
-        what       报错信息里用的名字，比如“项目”“分析”。
+        what       报错信息里用的名字，比如“项目”“分析”。调用处用 i18n.tr("项目", "Project") 传进来，
+                   英文的报错里才会是它的英文。
     返回：
         那一行（模型对象）。
     抛出：
@@ -246,7 +247,11 @@ def _owned(session: Session, model, object_id: str, org_id: str, what: str):
     row = session.get(model, object_id)
     if row is None or row.org_id != org_id:
         # 别的组织的数据一律当作不存在，不透露“有但你看不了”
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"没有这个{what}")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("没有这个{what}", "{what} not found", what=what))
+    if isinstance(row, models.Analysis) and isinstance(row.result, dict):
+        # 把这次分析自己的“中文 → 英文”对照表接进当前请求：返回英文时要查它；
+        # 重新评分时新拼出来的句子也会记进去，随结果一起保存（见 i18n.add_memory）
+        i18n.add_memory(row.result.setdefault("_en", {}))
     return row
 
 
@@ -264,7 +269,7 @@ def load_project(session: Session, principal: Principal, project_id: str) -> mod
     谁在用：
         api/core.py 的 project_history、create_draft、save_draft；api/analyses.py 的 create_analysis。
     """
-    return _owned(session, models.Project, project_id, principal.org_id, "项目")
+    return _owned(session, models.Project, project_id, principal.org_id, i18n.tr("项目", "Project"))
 
 
 def load_analysis(session: Session, principal: Principal, analysis_id: str) -> models.Analysis:
@@ -284,7 +289,7 @@ def load_analysis(session: Session, principal: Principal, analysis_id: str) -> m
         get_preliminary、llm_usage；api/reports.py 的 list_experiments；
         本文件的 load_scored_analysis。
     """
-    return _owned(session, models.Analysis, analysis_id, principal.org_id, "分析")
+    return _owned(session, models.Analysis, analysis_id, principal.org_id, i18n.tr("分析", "Analysis"))
 
 
 def load_scored_analysis(session: Session, principal: Principal, analysis_id: str) -> models.Analysis:
@@ -312,7 +317,7 @@ def load_scored_analysis(session: Session, principal: Principal, analysis_id: st
     # 还没跑出结果的分析（第 2 阶段搜索完成之前）result 是 None，这里当成空字典处理
     result = analysis.result or {}
     if result.get("stage") not in ("scored", "final"):
-        raise HTTPException(status.HTTP_409_CONFLICT, "这次分析还没有评分结果")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这次分析还没有评分结果", "This analysis has no scored results yet"))
     return analysis
 
 
@@ -335,5 +340,5 @@ def load_finished_analysis(session: Session, principal: Principal, analysis_id: 
     analysis = load_scored_analysis(session, principal, analysis_id)
     # status 的五种取值：queued 排队中、running 运行中、succeeded 成功、failed 失败、cancelled 已取消
     if analysis.status != "succeeded":
-        raise HTTPException(status.HTTP_409_CONFLICT, "分析还在进行中，等它完成后再操作")
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("分析还在进行中，等它完成后再操作", "The analysis is still in progress; try again once it has finished"))
     return analysis

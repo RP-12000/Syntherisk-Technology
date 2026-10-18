@@ -37,6 +37,7 @@ from urllib.parse import quote
 from fastapi import HTTPException, UploadFile, status
 from fastapi.responses import Response
 
+from syntherisk import i18n
 from syntherisk.context import AppContext
 
 
@@ -80,7 +81,7 @@ def load_file(ctx: AppContext, storage_name: str) -> bytes:
     """
     path = ctx.settings.files_dir / storage_name
     if not path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "文件不存在或已被清理")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("文件不存在或已被清理", "The file does not exist or has been removed"))
     return ctx.cipher.decrypt_bytes(path.read_bytes())
 
 
@@ -107,9 +108,9 @@ async def read_upload(ctx: AppContext, upload: UploadFile) -> bytes:
     # 最多只读“上限 + 1”个字节：读到的比上限多，就知道文件超了，不用把一个很大的文件全读进内存才发现
     data = await upload.read(limit + 1)
     if len(data) > limit:
-        raise HTTPException(413, f"文件超过 {ctx.settings.max_upload_mb} MB")
+        raise HTTPException(413, i18n.tr("文件超过 {mb} MB", "The file is larger than {mb} MB", mb=ctx.settings.max_upload_mb))
     if not data:
-        raise HTTPException(422, "文件是空的")
+        raise HTTPException(422, i18n.tr("文件是空的", "The file is empty"))
     return data
 
 

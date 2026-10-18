@@ -17,11 +17,15 @@
 [[rule]]
 id = "pressurized_gas"
 label = "加压气体反应"
+label_en = "Pressurized gas reaction"
 short = "需加压气体"
+short_en = "Needs pressurized gas"
 category = "设备"
+category_en = "Equipment"
 constraint = "pressurized_gas"
 penalty = 30
 reason = "用到氢气或一氧化碳，需要加压设备和气体安全措施"
+reason_en = "Uses hydrogen or carbon monoxide; needs pressure equipment and gas safety measures"
 substances = ["hydrogen", "carbon_monoxide"]
 class_keywords = ["hydrogenation", "氢化", "加氢", "carbonylation", "羰基化", "kolbe"]
 text_keywords = ["autoclave", "高压釜", " bar", " atm", " psi"]
@@ -29,11 +33,15 @@ text_keywords = ["autoclave", "高压釜", " bar", " atm", " psi"]
 [[rule]]
 id = "anhydrous_organometallic"
 label = "无水无氧操作"
+label_en = "Air- and moisture-free technique"
 short = "需无水"
+short_en = "Needs anhydrous conditions"
 category = "气氛"
+category_en = "Atmosphere"
 constraint = "anhydrous_anaerobic"
 penalty = 22
 reason = "有机金属试剂和金属氢化物遇水、遇氧分解，需要干燥溶剂和惰性气体保护"
+reason_en = "Organometallic reagents and metal hydrides decompose on contact with water or oxygen; needs dry solvents and an inert atmosphere"
 substances = ["magnesium", "lithium_aluminium_hydride", "sodium_hydride", "sodium", "dibal"]
 smarts = ["[Mg][#6]", "[Li][#6]", "[Li][#7]", "[Zn][#6]", "[Al;H1,H2,H3,H4]"]
 class_keywords = ["grignard", "格氏", "lithiation", "锂化", "organolithium"]
@@ -42,22 +50,30 @@ text_keywords = ["anhydrous", "无水", "under argon", "under nitrogen", "氩气
 [[rule]]
 id = "glovebox"
 label = "手套箱"
+label_en = "Glovebox"
 short = "需手套箱"
+short_en = "Needs glovebox"
 category = "设备"
+category_en = "Equipment"
 constraint = "glovebox"
 penalty = 35
 reason = "试剂对空气极其敏感，通常在手套箱里称量和投料"
+reason_en = "Reagents are extremely air-sensitive and are usually weighed and charged in a glovebox"
 smarts = ["[Ni].C1CC=CCCC=C1", "[Sm]"]
 text_keywords = ["glovebox", "glove box", "手套箱"]
 
 [[rule]]
 id = "cryogenic"
 label = "低温（< −40 °C）"
+label_en = "Cryogenic (< −40 °C)"
 short = "需低温"
+short_en = "Needs cryogenic cooling"
 category = "温度"
+category_en = "Temperature"
 constraint = "cryogenic"
 penalty = 18
 reason = "有机锂等试剂通常在 −78 °C 下使用，需要干冰丙酮浴或低温反应器"
+reason_en = "Organolithium and similar reagents are usually used at −78 °C; needs a dry ice/acetone bath or a cryogenic reactor"
 substances = ["n_butyllithium", "t_butyllithium", "lda", "dibal"]
 smarts = ["[Li][#6]", "[Li][#7]"]
 class_keywords = ["lithiation", "锂化", "swern"]
@@ -67,78 +83,110 @@ max_temperature = -40
 [[rule]]
 id = "photo_electro"
 label = "光化学 / 电化学"
+label_en = "Photochemistry / electrochemistry"
 short = "需光或电化学装置"
+short_en = "Needs photo- or electrochemical setup"
 category = "设备"
+category_en = "Equipment"
 constraint = "photo_electro"
 penalty = 25
 reason = "需要光反应器或电解装置"
+reason_en = "Needs a photoreactor or an electrolysis setup"
 class_keywords = ["photo", "光催化", "光化学", "electro", "电化学"]
 text_keywords = ["irradiat", "blue led", "光照", "electrolysis", "电解"]
 
 [[rule]]
 id = "hf_handling"
 label = "氟化氢"
+label_en = "hydrogen fluoride"
 short = "HF 专用防护"
+short_en = "HF-specific protection"
 category = "安全设施"
+category_en = "Safety facilities"
 penalty = 30
 reason = "氟化氢需要专用耐腐蚀设备、葡萄糖酸钙应急药品和专门培训"
+reason_en = "Hydrogen fluoride needs dedicated corrosion-resistant equipment, calcium gluconate on hand for emergencies, and special training"
 substances = ["hydrogen_fluoride"]
 
 [[rule]]
 id = "inert_atmosphere"
 label = "惰性气体保护"
+label_en = "Inert atmosphere"
 short = "需惰性气体保护"
+short_en = "Needs inert atmosphere"
 category = "气氛"
+category_en = "Atmosphere"
 penalty = 8
 reason = "零价钯等催化剂对空气敏感，需要脱气并在氮气或氩气下反应"
+reason_en = "Pd(0) and similar catalysts are air-sensitive; degas and run under nitrogen or argon"
 substances = ["pd_pph3_4"]
 smarts = ["[Pd;+0]"]
 
 [[rule]]
 id = "pyrophoric_catalyst"
 label = "易自燃催化剂"
+label_en = "Pyrophoric catalyst"
 short = "催化剂易自燃"
+short_en = "Catalyst is pyrophoric"
 category = "安全设施"
+category_en = "Safety facilities"
 penalty = 10
 reason = "雷尼镍等催化剂干燥后在空气中自燃，过滤和处理时要保持湿润"
+reason_en = "Raney nickel and similar catalysts ignite in air once dry; keep them wet during filtration and handling"
 substances = ["raney_nickel"]
 
 [[rule]]
 id = "high_temperature"
 label = "高温（> 150 °C）"
+label_en = "High temperature (> 150 °C)"
 short = "需高温"
+short_en = "Needs high temperature"
 category = "温度"
+category_en = "Temperature"
 penalty = 10
 reason = "反应温度高于 150 °C，需要油浴以上的加热条件或封管"
+reason_en = "Reaction temperature above 150 °C; needs heating beyond an oil bath, or a sealed tube"
 min_temperature = 150
 text_keywords = ["sealed tube", "封管", "microwave", "微波"]
 
 [[rule]]
 id = "column_chromatography"
 label = "柱色谱纯化"
+label_en = "Purification by column chromatography"
 short = "需过柱"
+short_en = "Needs column chromatography"
 category = "纯化"
+category_en = "Purification"
 purification = "column_chromatography"
 penalty = 5
 reason = "先例里用柱色谱纯化"
+reason_en = "Precedents purify by column chromatography"
 text_keywords = ["chromatograph", "柱色谱", "柱层析", "silica gel", "硅胶柱"]
 
 [[rule]]
 id = "distillation"
 label = "蒸馏纯化"
+label_en = "Purification by distillation"
 short = "需蒸馏"
+short_en = "Needs distillation"
 category = "纯化"
+category_en = "Purification"
 purification = "distillation"
 penalty = 4
 reason = "先例里用蒸馏纯化"
+reason_en = "Precedents purify by distillation"
 text_keywords = ["distill", "蒸馏"]
 
 [[rule]]
 id = "prep_hplc"
 label = "制备 HPLC 纯化"
+label_en = "Purification by preparative HPLC"
 short = "需制备 HPLC"
+short_en = "Needs preparative HPLC"
 category = "纯化"
+category_en = "Purification"
 purification = "prep_hplc"
 penalty = 10
 reason = "先例里用制备 HPLC 纯化"
+reason_en = "Precedents purify by preparative HPLC"
 text_keywords = ["preparative hplc", "prep-hplc", "prep hplc", "制备hplc", "制备 hplc"]

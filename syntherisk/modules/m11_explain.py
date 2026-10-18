@@ -24,7 +24,9 @@
           再转成 JSON 文本发给大模型。路线的推荐理由用的是 M10 写在 route 上的汇总字段（summary、weakest 等）。
     大模型：通过 syntherisk/llm 的 LLMService.complete_json() 调用，要求按 SENTENCES_SCHEMA 返回结构化的结果。
           LLMService 把每次调用的用量记进 llm_calls 表，模块名记作 "M11"。
-    输出：{"sentences", "text", "generated_by", "provider", "model", "dropped_sentences", "note"}。
+    输出：{"sentences", "text", "generated_by", "lang", "provider", "model", "dropped_sentences", "note"}。
+          lang 是这段说明用哪种语言写的（"zh" / "en"）：大模型按当前语言（syntherisk/i18n.py 的 current_lang()）
+          直接写成那种语言；模板写的句子存的是中文，英文记在对照表里，返回时按请求的语言换。
           调用方把一步的说明存到 route["explanations"][步骤编号]，把路线的推荐理由存到 route["explanation"]。
     本文件自己不读写数据库。
 
@@ -38,6 +40,8 @@
     _NUMBER、_numbers()     从一段文字里找出所有数字
     SENTENCES_SCHEMA        要求大模型返回的 JSON 结构
     STEP_SYSTEM_PROMPT、ROUTE_SYSTEM_PROMPT   写步骤说明、写路线推荐理由用的两段系统提示词
+    STEP_SYSTEM_PROMPT_EN、ROUTE_SYSTEM_PROMPT_EN   它们的英文版：当前语言是英文时用，要求模型直接用英文写
+    model_facts()           发给大模型的事实；当前语言是英文时把里面的中文换成英文（M12 也用它）
     validate_sentences()    核对大模型写的句子：出处是不是卡里有的，数字是不是卡里有的（M12 也用它）
     Explainer               写说明的类
         explain_step()      一步的说明
@@ -52,6 +56,7 @@ import json
 import re
 from typing import Any
 
+from syntherisk import i18n
 from syntherisk.cards import card_facts, render_sentences
 from syntherisk.llm import LLMError, LLMService
 from syntherisk.modules.m06_safety import most_severe
@@ -110,6 +115,32 @@ ROUTE_SYSTEM_PROMPT = """你是 Syntherisk 的说明撰写助手，读者是做�
 3. 不要自己打分，也不要改动任何数字。
 4. 句子里不要出现方括号形式的引用标记。"""
 
+# 上面两段提示词的英文版：当前语言是英文（i18n.current_lang() == "en"）时发这两段，要求模型直接用英文写。
+# 规则和中文版逐条对应；多出来的一条是告诉模型，卡里个别没有英文写法的名称照原样写，不要自己翻译。
+STEP_SYSTEM_PROMPT_EN = """You are the explanation writer for Syntherisk. Your readers are researchers who do organic synthesis.
+
+The user gives you an "evidence card" (JSON) describing one reaction step of a synthetic route: literature precedents, reaction conditions, yield, toxicity, materials and the score of each dimension.
+Write 2 to 4 sentences in English explaining: what reaction this step is, what evidence supports it, where the main risk lies, and which dimension loses the most points.
+
+Rules you must follow:
+1. Use only the information on the evidence card. Never write facts, numbers, references, reagents or conditions that are not on the card.
+2. For every sentence, list in sources the source ids it relies on. Ids may only be chosen from the card's allowed_sources; the source field in front of each item on the card is that item's id.
+3. Do not score anything yourself, and do not change any number on the card.
+4. Where the card lacks information (for example no precedent, no yield record), say plainly that it is missing. Do not guess.
+5. One point per sentence, no pleasantries, and no citation markers in square brackets inside the sentences.
+6. Write in English. If a name on the card has no English form, keep it exactly as given."""
+
+ROUTE_SYSTEM_PROMPT_EN = """You are the explanation writer for Syntherisk. Your readers are researchers who do organic synthesis.
+
+The user gives you a summary of one synthetic route (JSON). Write a recommendation of 2 to 3 sentences in English: the overall picture of this route, its weakest link, and what to watch out for before starting the experiment.
+
+Rules you must follow:
+1. Use only the information given. Do not add any fact or number that was not given.
+2. For every sentence, list in sources the source ids it relies on. Ids may only be chosen from allowed_sources.
+3. Do not score anything yourself, and do not change any number.
+4. No citation markers in square brackets inside the sentences.
+5. Write in English. If a name in the summary has no English form, keep it exactly as given."""
+
 
 def _numbers(text: str) -> list[float]:
     """找出一段文字里的所有数字，按出现的先后返回（都转成 float）。
@@ -119,6 +150,27 @@ def _numbers(text: str) -> list[float]:
         本文件的 validate_sentences()。
     """
     return [float(n) for n in _NUMBER.findall(text)]
+
+
+def model_facts(card: dict[str, Any]) -> dict[str, Any]:
+    """发给大模型的事实：card_facts(card)，当前语言是英文时把里面有对照的中文换成英文。
+
+    用哪种语言看 i18n.current_lang()：流水线里是提交分析时界面的语言，请求里是这次请求的语言。
+    中文时返回的就是 card_facts(card)，发出去的内容和以前一字不差。
+    英文时用 i18n.localize() 把名称、标签、依据这些整句有对照的文字换成英文。
+    card_facts() 把每条管制信息拼成“地区 清单 类别”一句，这句拼出来的话本身没有对照，
+    所以这里先照同样的写法用 i18n.tr 拼一遍，把整句的英文记下来，localize() 才换得掉。
+
+    谁在用：
+        本文件的 Explainer.explain_step()；m12_qa.QuestionAnswerer.answer()。
+    """
+    lang = i18n.current_lang()
+    if lang == "en":
+        for hazard in card["hazards"]:
+            for c in hazard["controlled"]:
+                i18n.tr("{jurisdiction} {list} {category}", "{jurisdiction} {list} {category}",
+                        jurisdiction=c["jurisdiction"], list=c["list"], category=c["category"])
+    return i18n.localize(card_facts(card), lang)
 
 
 def validate_sentences(raw: Any, allowed_sources: set[str], facts: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
@@ -138,7 +190,8 @@ def validate_sentences(raw: Any, allowed_sources: set[str], facts: dict[str, Any
         dropped  没通过、被丢掉的句数
     一句话要同时满足下面几条才留下：
         1. 文字不是空的，并且不超过 400 个字符；
-        2. sources 不是空的，并且每个编号都在 allowed_sources 里；
+        2. sources 是出处编号（字符串）的列表，不是空的，并且每个编号都在 allowed_sources 里；
+           这一项不是字典，或者 sources 不是这样的列表（是一个数字、里面套着字典……），都算没通过；
         3. 句子里的每个数字，都能在 facts 的 JSON 文本里找到一个相差不到 0.51 的数字
            （允许四舍五入：卡里是 78.4，句子写 78 可以；卡里没有 95，句子写 95% 就不行）。
     数字检查的范围：
@@ -156,7 +209,11 @@ def validate_sentences(raw: Any, allowed_sources: set[str], facts: dict[str, Any
     for item in raw if isinstance(raw, list) else []:
         # 每一项应当是字典；不是字典就当成空句子，下面会被丢掉
         text = str(item.get("text", "")).strip() if isinstance(item, dict) else ""
-        sources = [s for s in (item.get("sources") or [])] if isinstance(item, dict) else []
+        sources = item.get("sources") if isinstance(item, dict) else None
+        # sources 应当是出处编号（字符串）的列表。是别的东西（一个数字、里面套着字典……）就当作没有出处，
+        # 这句话在下面会被丢掉；不这样先查一遍的话，拿它们去和集合比较会直接报错
+        if not isinstance(sources, list) or not all(isinstance(s, str) for s in sources):
+            sources = []
         # grounded：句子里的每个数字 n，都能在卡里找到一个相差不到 0.51 的数字 k。句子里没有数字时为 True
         grounded = all(any(abs(n - k) < 0.51 for k in known) for n in _numbers(text))
         if text and sources and all(s in allowed_sources for s in sources) and grounded and len(text) <= 400:
@@ -165,6 +222,18 @@ def validate_sentences(raw: Any, allowed_sources: set[str], facts: dict[str, Any
         else:
             dropped += 1
     return kept, dropped
+
+
+# 退回模板时写在 note 里的几种原因（explain_step 和 explain_route 共用）
+_NOTE_OFFLINE = i18n.tr("未配置大模型，按模板生成", "No language model is configured; generated from the template")
+_NOTE_REJECTED = i18n.tr("大模型写的句子没有通过出处核对，改用模板",
+                         "The model's sentences did not pass the source check; the template was used instead")
+
+
+def _note_failed(exc: LLMError) -> str:
+    """大模型调用失败时的 note。exc 的说明是调用层用 i18n.tr 写的，所以英文那句里用的是它的英文。"""
+    return i18n.tr("大模型没有调通（{reason}），改用模板",
+                   "The language model call failed ({reason}); the template was used instead", reason=str(exc))
 
 
 class Explainer:
@@ -207,15 +276,19 @@ class Explainer:
             syntherisk/pipeline.py 的 AnalysisRunner._explain()（流水线第 8 阶段）；
             api/analyses.py 的 get_step_card()（B10：这一步的说明还没写过时补写）。
         """
-        facts = card_facts(card)
-        note = "未配置大模型，按模板生成"
+        # 这段说明用哪种语言写：流水线里是提交分析时界面的语言，请求里是这次请求的语言
+        lang = i18n.current_lang()
+        # 发给大模型的事实。要英文时，里面有对照的中文（标签、名称、依据）先换成英文再发；
+        # 中文时就是 card_facts(card)，发出去的内容和以前一字不差
+        facts = model_facts(card)
+        note = _NOTE_OFFLINE
         if self.llm.enabled:
             try:
                 # complete_json()：发一次请求，要求模型按 schema 返回 JSON；失败时抛 LLMError。
                 # module="M11" 和两个 id 只用来记用量；schema_name 是给这个结构起的名字，有的厂商接口要求提供
                 response = self.llm.complete_json(
                     module="M11",
-                    system=STEP_SYSTEM_PROMPT,
+                    system=STEP_SYSTEM_PROMPT_EN if lang == "en" else STEP_SYSTEM_PROMPT,
                     user=json.dumps(facts, ensure_ascii=False),
                     schema=SENTENCES_SCHEMA,
                     schema_name="step_explanation",
@@ -229,9 +302,9 @@ class Explainer:
                 if sentences:
                     return self._package(sentences, card["sources"], generated_by="llm", provider=response.provider,
                                          model=response.model, dropped=dropped)
-                note = "大模型写的句子没有通过出处核对，改用模板"
+                note = _NOTE_REJECTED
             except LLMError as exc:
-                note = f"大模型没有调通（{exc}），改用模板"
+                note = _note_failed(exc)
         # 走到这里说明没有可用的大模型结果：按模板写
         return self._package(self._step_template(card), card["sources"], generated_by="template", note=note)
 
@@ -255,6 +328,8 @@ class Explainer:
             provider、model    同参数
             dropped_sentences  同 dropped
             note               同参数
+            lang               这段说明是用哪种语言写的："zh" 或 "en"（取当前语言）。大模型写的句子只有这一种语言；
+                               模板写的句子两种语言都有（英文在对照表里），这一项对它们没有影响
         谁在用：
             本类的 explain_step() 和 explain_route()。
         """
@@ -262,6 +337,7 @@ class Explainer:
             "sentences": sentences,
             "text": render_sentences(sentences, sources),
             "generated_by": generated_by,  # llm / template
+            "lang": i18n.current_lang(),  # zh / en
             "provider": provider,
             "model": model,
             "dropped_sentences": dropped,
@@ -289,62 +365,91 @@ class Explainer:
         sentences: list[dict[str, Any]] = []
         # 第 1 句：反应名、反应物、产物。没有名字的分子用分子式
         product = card["product"]["name"] or card["product"]["formula"]
-        reactants = "、".join(m["name"] or m["formula"] for m in card["reactants"])
-        sentences.append({"text": f"这一步是{card['name']}，由{reactants}得到{product}", "sources": ["ROUTE"]})
+        # 每一句都用 i18n.tr 拼：返回的是中文，同时记下整句的英文；i18n.join 是带英文的顿号连接
+        reactants = i18n.join([m["name"] or m["formula"] for m in card["reactants"]])
+        sentences.append({"text": i18n.tr("这一步是{name}，由{reactants}得到{product}",
+                                          "This step is {name}: {product} is made from {reactants}",
+                                          name=card["name"], reactants=reactants, product=product),
+                          "sources": ["ROUTE"]})
 
         # 第 2 句：文献依据。refs 是这张卡上列出的全部先例的编号（P1、P2……）
         evidence, yield_info = card["evidence"], card["yield"]
         refs = [p["ref"] for p in card["precedents"]]
         if evidence["level"] is None:
             # 等级是 None：先例库还没有导入，没有评估
-            sentences.append({"text": "先例库还没有导入数据，这一步的文献依据暂时没有评估", "sources": ["SCORE"]})
+            sentences.append({"text": i18n.tr("先例库还没有导入数据，这一步的文献依据暂时没有评估",
+                                              "The precedent library has no data loaded yet, so the literature "
+                                              "evidence for this step has not been assessed"),
+                              "sources": ["SCORE"]})
         elif evidence["level"] == "E1":
             # E1：库里有同一个反应的报道。有文献报道的产率就接在后面；出处优先写同一反应的那几条先例
             exact = [p["ref"] for p in card["precedents"] if p["exact"]]
-            text = f"先例库里有 {evidence['n_exact']} 个先例报道了同一个反应"
+            # 英文要分单复数（1 precedent reports / 3 precedents report），所以按个数选英文模板
+            n_exact = evidence["n_exact"]
+            found = ("{n} precedent in the library reports this exact reaction" if n_exact == 1
+                     else "{n} precedents in the library report this exact reaction")
             if yield_info.get("source") == "literature":
-                text += f"，{yield_info['label']}"
+                text = i18n.tr("先例库里有 {n} 个先例报道了同一个反应，{yield_label}", found + ". {yield_label}",
+                               n=n_exact, yield_label=yield_info["label"])
+            else:
+                text = i18n.tr("先例库里有 {n} 个先例报道了同一个反应", found, n=n_exact)
             sentences.append({"text": text, "sources": exact or refs})
         elif evidence["level"] in ("E2", "E3"):
             # E2 / E3：只有相似先例。直接引用 M5 写好的依据（evidence["basis"]），出处最多写三条先例
-            text = f"没有找到同一个反应的报道，{evidence['basis']}"
+            text = i18n.tr("没有找到同一个反应的报道，{basis}", "No report of this exact reaction was found. {basis}",
+                           basis=evidence["basis"])
             sentences.append({"text": text, "sources": refs[:3]})
         else:
             # E4：没有可参考的先例。卡上有逆合成模型的依据时出处写 MODEL，否则写 SCORE
-            sentences.append({"text": "先例库里没有找到可参考的先例，这一步只有模型依据",
+            sentences.append({"text": i18n.tr("先例库里没有找到可参考的先例，这一步只有模型依据",
+                                              "No usable precedent was found in the library; this step rests on "
+                                              "the retrosynthesis model alone"),
                               "sources": ["MODEL"] if card.get("model") else ["SCORE"]})
 
         # 第 3 句：操作。只提扣分最多的那个标签
         tags = card["conditions"].get("tags") or []
         if tags:
             main = max(tags, key=lambda t: t["penalty"])
-            sentences.append({"text": f"操作上需要{main['label']}：{main['reason']}", "sources": [f"RULE:{main['rule_id']}"]})
+            sentences.append({"text": i18n.tr("操作上需要{label}：{reason}", "Special handling needed: {label}. {reason}",
+                                              label=main["label"], reason=main["reason"]),
+                              "sources": [f"RULE:{main['rule_id']}"]})
 
         # 第 4 句：安全。most_severe()（m06_safety）在这一步用到的物质里挑危害最重的一个；
         # 这一步的产物自己不算。没有带危害类别的物质时返回 None，就没有这一句
         worst = most_severe([h for h in card["hazards"] if h["key14"] != card["product"]["key14"]])
         if worst:
-            sentences.append({"text": f"安全方面要注意{worst['name']}：{worst['statement']}", "sources": ["GHS"]})
+            sentences.append({"text": i18n.tr("安全方面要注意{name}：{statement}", "The main safety concern is {name}: {statement}",
+                                              name=worst["name"], statement=worst["statement"]),
+                              "sources": ["GHS"]})
 
         # 没评估的项目要说出来，免得读的人以为“没提就是没问题”
         by_key = {d["key"]: d for d in card["dimensions"]}
         missing = []
         if not tags and by_key["operation"]["score"] is None:
-            missing.append("不知道这一步用什么试剂和条件，操作复杂度没有评估")
+            missing.append(i18n.tr("不知道这一步用什么试剂和条件，操作复杂度没有评估",
+                                   "The reagents and conditions of this step are unknown, so operational "
+                                   "complexity was not assessed"))
         if by_key["safety"]["score"] is None:
-            missing.append("用到的物质都没有危害数据，安全性没有评估")
+            missing.append(i18n.tr("用到的物质都没有危害数据，安全性没有评估",
+                                   "None of the substances used has hazard data, so safety was not assessed"))
         if missing:
-            sentences.append({"text": "；".join(missing), "sources": ["SCORE"]})
+            sentences.append({"text": i18n.join(missing, "；", "; "), "sources": ["SCORE"]})
 
         # 最后一句：综合得分，以及损失最大的维度（损失 = 权重 × (100 − 维度分)，只在有分数的维度里比）
         scored = [d for d in card["dimensions"] if d["score"] is not None]
         if scored and card["score"] is not None:
             lowest = max(scored, key=lambda d: d["weight"] * (100 - d["score"]))
             # :g 去掉多余的小数位（78.0 写成 78）
-            text = f"这一步综合得分 {card['score']:g}，扣分主要在{lowest['short']}一项"
             if card.get("thin"):
                 # 依据不足的步骤：把实际算进去的维度列出来，提醒这个分数参考价值有限
-                text += f"；这个分数只算了{'、'.join(d['short'] for d in scored)}，参考价值有限"
+                text = i18n.tr("这一步综合得分 {score:g}，扣分主要在{lowest}一项；这个分数只算了{counted}，参考价值有限",
+                               "This step scores {score:g} overall, losing most points on {lowest}; the score only "
+                               "covers {counted}, so it is of limited value",
+                               score=card["score"], lowest=lowest["short"], counted=i18n.join([d["short"] for d in scored]))
+            else:
+                text = i18n.tr("这一步综合得分 {score:g}，扣分主要在{lowest}一项",
+                               "This step scores {score:g} overall, losing most points on {lowest}",
+                               score=card["score"], lowest=lowest["short"])
             sentences.append({"text": text, "sources": ["SCORE"]})
         return sentences[:6]
 
@@ -384,6 +489,8 @@ class Explainer:
             {"id": "ROUTE", "type": "route", "label": "逆合成路线"},
         ]
         # 发给大模型的事实。每一项都带 source，告诉模型引用这一项时该写哪个来源编号
+        # 这段话用哪种语言写（见 explain_step）
+        lang = i18n.current_lang()
         facts = {
             # 路线名和各步的反应名
             "route": {"source": "ROUTE", "name": route["name"], "steps": [s["name"] for s in route["steps"]]},
@@ -405,40 +512,58 @@ class Explainer:
             "literature_coverage_percent": {"source": "SCORE", "value": summary["literature_coverage"]},
             "allowed_sources": [s["id"] for s in sources],
         }
-        note = "未配置大模型，按模板生成"
+        # 要英文时，把事实里有对照的中文（路线名、反应名、置信度、理由、建议……）换成英文再发；中文时原样
+        facts = i18n.localize(facts, lang)
+        note = _NOTE_OFFLINE
         if self.llm.enabled:
             try:
                 # 和 explain_step() 一样：调模型、核对句子，有句子留下来就用
                 response = self.llm.complete_json(
-                    module="M11", system=ROUTE_SYSTEM_PROMPT, user=json.dumps(facts, ensure_ascii=False),
+                    module="M11", system=ROUTE_SYSTEM_PROMPT_EN if lang == "en" else ROUTE_SYSTEM_PROMPT,
+                    user=json.dumps(facts, ensure_ascii=False),
                     schema=SENTENCES_SCHEMA, schema_name="route_summary", org_id=org_id, analysis_id=analysis_id,
                 )
                 sentences, dropped = validate_sentences(response.data.get("sentences"), set(facts["allowed_sources"]), facts)
                 if sentences:
                     return self._package(sentences, sources, generated_by="llm", provider=response.provider,
                                          model=response.model, dropped=dropped)
-                note = "大模型写的句子没有通过出处核对，改用模板"
+                note = _NOTE_REJECTED
             except LLMError as exc:
-                note = f"大模型没有调通（{exc}），改用模板"
+                note = _note_failed(exc)
 
         # 模板：第 1 句总是有，后面三句有相应的内容才写
         # 路线分可能是 None：每一步的六个维度全都没有数据时算不出分数。这时照实写，不能拿 None 去套数字格式
-        scored = "综合得分 {:g}".format(route["score"]) if route["score"] is not None else "各项都没有数据，没有算出综合得分"
+        # 每一段都用 i18n.tr 拼（scored 这半句也是），整句的英文才对得上
+        scored = (i18n.tr("综合得分 {score:g}", "overall score {score:g}", score=route["score"])
+                  if route["score"] is not None
+                  else i18n.tr("各项都没有数据，没有算出综合得分", "no overall score could be computed because no dimension has data"))
         sentences = [{
-            "text": f"“{route['name']}”路线共 {summary['n_steps']} 步，{scored}，"
-                    f"置信度{route['confidence_label']}（{route['confidence_reason']}）",
+            "text": i18n.tr("“{name}”路线共 {n} 步，{scored}，置信度{confidence}（{reason}）",
+                            # 英文分单复数：1 step / 3 steps
+                            "The “{name}” route has {n} step, {scored}, confidence: {confidence} ({reason})"
+                            if summary["n_steps"] == 1 else
+                            "The “{name}” route has {n} steps, {scored}, confidence: {confidence} ({reason})",
+                            name=route["name"], n=summary["n_steps"], scored=scored,
+                            confidence=route["confidence_label"], reason=route["confidence_reason"]),
             "sources": ["SCORE"],
         }]
         if weakest:
             # weakest 只从有分数的步骤里挑（m10 的 _weakest_link），所以这里的 score 一定是数字
             sentences.append({
-                "text": f"最薄弱的环节是第 {weakest['step_index']} 步{weakest['name']}（{weakest['score']:g} 分）；"
-                        f"{weakest['suggestion']}",
+                "text": i18n.tr("最薄弱的环节是第 {n} 步{name}（{score:g} 分）；{suggestion}",
+                                "The weakest link is step {n}, {name} (score {score:g}). {suggestion}",
+                                n=weakest["step_index"], name=weakest["name"], score=weakest["score"],
+                                suggestion=weakest["suggestion"]),
                 "sources": ["SCORE"],
             })
         if summary["special_operations"]:
-            operations = "、".join(op["text"] for op in summary["special_operations"])
-            sentences.append({"text": f"需要的特殊操作：{operations}", "sources": ["RULE"]})
+            operations = i18n.join([op["text"] for op in summary["special_operations"]])
+            sentences.append({"text": i18n.tr("需要的特殊操作：{operations}", "Special operations required: {operations}",
+                                              operations=operations),
+                              "sources": ["RULE"]})
         if summary["inventory_count"]:
-            sentences.append({"text": f"所需物料里库存已有 {summary['inventory_count']}", "sources": ["STOCK"]})
+            sentences.append({"text": i18n.tr("所需物料里库存已有 {count}",
+                                              "{count} of the required materials are already in stock",
+                                              count=summary["inventory_count"]),
+                              "sources": ["STOCK"]})
         return self._package(sentences, sources, generated_by="template", note=note)

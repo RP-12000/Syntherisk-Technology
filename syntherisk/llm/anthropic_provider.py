@@ -29,6 +29,7 @@ from typing import Any
 
 import anthropic
 
+from syntherisk import i18n
 from syntherisk.llm.base import LLMError, LLMRefusal, LLMResponse
 
 
@@ -112,7 +113,7 @@ class AnthropicProvider:
         抛出：
             LLMRefusal  模型因安全策略拒答（stop_reason 是 "refusal"）。
             LLMError    限流；接口返回错误状态码；连不上；SDK 的其他错误；
-                        输出被 max_tokens 截断；回复里没有文本；文本不是合法 JSON。
+                        输出被 max_tokens 截断；回复里没有文本；文本不是合法 JSON，或者不是一个 JSON 对象。
         副作用：
             发网络请求（SDK 自己最多重试 2 次）。不写数据库。
         谁在用：
@@ -134,30 +135,37 @@ class AnthropicProvider:
             )
         # 下面几个 except 从具体到笼统排列：RateLimitError 是 APIStatusError 的子类，要排在它前面才轮得到；
         # 最后的 AnthropicError 是 SDK 所有错误的基类，兜住其余情况。统一转成 LLMError；
-        # “from exc” 把原来的错误留在异常链里，看日志时还找得到
+        # “from exc” 把原来的错误留在异常链里，看日志时还找得到。
+        # 错误说明都用 i18n.tr 写：业务模块会把它拼进返回值的 note，要英文时用的是这里配的英文
+        # （英文句首不大写，因为它是嵌在 note 那句话的括号里的）
         except anthropic.RateLimitError as exc:
-            raise LLMError("大模型接口限流，稍后再试") from exc
+            raise LLMError(i18n.tr("大模型接口限流，稍后再试", "the model API is rate-limited; try again later")) from exc
         except anthropic.APIStatusError as exc:
-            raise LLMError(f"大模型接口返回错误（HTTP {exc.status_code}）：{exc.message}") from exc
+            raise LLMError(i18n.tr("大模型接口返回错误（HTTP {status}）：{detail}", "the model API returned an error (HTTP {status}): {detail}",
+                                   status=exc.status_code, detail=exc.message)) from exc
         except anthropic.APIConnectionError as exc:
-            raise LLMError("连不上大模型接口") from exc
+            raise LLMError(i18n.tr("连不上大模型接口", "could not connect to the model API")) from exc
         except anthropic.AnthropicError as exc:
-            raise LLMError(f"大模型调用失败：{exc}") from exc
+            raise LLMError(i18n.tr("大模型调用失败：{detail}", "the model call failed: {detail}", detail=str(exc))) from exc
 
         # 先看停止原因，再读内容：拒答和被截断时内容不完整，不能当正常结果用
         if response.stop_reason == "refusal":
-            raise LLMRefusal("模型出于安全策略没有回答")
+            raise LLMRefusal(i18n.tr("模型出于安全策略没有回答", "the model declined to answer under its safety policy"))
         if response.stop_reason == "max_tokens":
-            raise LLMError("模型输出被截断（LLM_MAX_TOKENS 太小）")
+            raise LLMError(i18n.tr("模型输出被截断（LLM_MAX_TOKENS 太小）",
+                                   "the model output was truncated (LLM_MAX_TOKENS is too small)"))
         # 开了思考时，回复前面可能有 thinking 块，所以按类型找文本，不能直接取第一个
         text = next((block.text for block in response.content if block.type == "text"), None)
         if not text:
-            raise LLMError("模型没有返回内容")
+            raise LLMError(i18n.tr("模型没有返回内容", "the model returned no content"))
         try:
             data = json.loads(text)
         except ValueError as exc:
             # json.JSONDecodeError 是 ValueError 的子类，这里接的就是“不是合法 JSON”
-            raise LLMError("模型返回的不是合法 JSON") from exc
+            raise LLMError(i18n.tr("模型返回的不是合法 JSON", "the model did not return valid JSON")) from exc
+        # 合法的 JSON 也可能是列表或数字；业务模块按字典来用，所以在这里卡一道（和 openai_compatible.py 一样）
+        if not isinstance(data, dict):
+            raise LLMError(i18n.tr("模型返回的 JSON 不是对象", "the JSON returned by the model is not an object"))
         return LLMResponse(
             data=data,
             provider=self.name,

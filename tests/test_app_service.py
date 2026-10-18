@@ -41,6 +41,8 @@ pytest 自带的夹具（本文件用到三个）
         校验、上传、名称查询、画图、结构差异五个结构接口
     test_precedent_list_marks_structural_differences
         先例列表给相似先例标出结构差异；产率只用同一反应的报道值
+    test_precedent_links_saved_by_older_analyses_are_rebuilt_when_read
+        旧分析里存着的打不开的先例链接，打开证据卡和先例列表时按专利号重新拼
     HeldQueue
         只收任务、不执行的假队列
     test_queued_analysis_can_be_cancelled_and_never_runs
@@ -55,6 +57,7 @@ pytest 自带的夹具（本文件用到三个）
         命令行的 status、seed-demo、load-precedents、calibrate、export-consented
 """
 
+import copy
 import json
 
 import pytest
@@ -342,8 +345,8 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
       - 同一反应的先例排在前面，exact 为 true，相似度是 1.0，不带 structure_diff；
       - 相似先例带 structure_diff（m01_structure.py 的 structure_diff）：query 一侧是这一步的产物，
         reference 一侧是先例的产物；
-      - 原文链接：有 DOI 的给 doi.org 的地址，没有 DOI 的专利给 Google Patents 的地址
-        （syntherisk/modules/m05_precedents.py 的 document_url）；
+      - 原文链接：有 DOI 的给 doi.org 的地址；没有 DOI 的专利，专利号认得的给 Google Patents 的地址，
+        认不出来的（比如这里现编的 TEST-0001）不给链接（syntherisk/modules/m05_precedents.py 的 document_url）；
       - 证据卡上的产率只用同一反应的报道值（m05_precedents.py 的 _yield_info）。
     怎么读：先往这个测试的先例库里放两条现编的先例，再提交阿司匹林的分析（证据等级是分析的第 4 阶段评的，
     所以先例要在分析之前放进去）。演示路线 r1 只有一步：水杨酸 + 乙酸酐 → 阿司匹林。
@@ -366,8 +369,8 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
     assert listing["evidence"]["level"] == "E1"
     # 列表里正好两条，解包成两个变量：同一反应的那条在前
     exact, similar = listing["precedents"]
-    # 专利的链接是 Google Patents 的地址后面接文献号
-    assert exact["exact"] and exact["similarity"] == 1.0 and exact["url"] == "https://patents.google.com/patent/TEST-0001"
+    # TEST-0001 不是专利号的写法，拼不出能打开的链接，所以不给链接（以前会给一个打不开的 Google Patents 地址）
+    assert exact["exact"] and exact["similarity"] == 1.0 and exact["url"] is None
     # 同一反应的先例产物和这一步一样，没有差异可标
     assert "structure_diff" not in exact
     # 第二条：不是同一反应；类型显示成“期刊论文”；有 DOI，所以链接是 doi.org 的地址
@@ -377,6 +380,50 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
     # 产率只用同一反应的报道值（90%），不把氯代类似物的 70% 混进来
     card = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1", headers=account["headers"]).json()
     assert card["yield"]["label"] == "文献报道 90%（1 个先例）"
+
+
+def test_precedent_links_saved_by_older_analyses_are_rebuilt_when_read(client, account, ctx):
+    """旧分析里存着的先例链接打不开时，打开证据卡和先例列表看到的是按专利号重新拼的链接。
+
+    保证的行为：
+      - 分析时（M5，m05_precedents.py 的 _to_dict）存进结果的链接已经是 Google Patents 能打开的写法：
+        USPTO 的 US06171520B2 去掉补位的 0 和类型代码，成为 US6171520（m05_precedents.py 的 document_url）；
+      - 读结果的时候不用存着的 url，按文献号重新拼（cards.py 的 build_card、build_sources 调
+        m05_precedents.py 的 precedent_url）。先例列表、证据卡上的先例、卡上的来源 P1 都是这样，
+        报告里的文献列表也从 build_card 取先例。
+    为什么重要：旧版本把 US06171520B2 原样接在地址后面，Google Patents 上是 404；那些分析的结果还存在库里，
+    重新分析之前也要能打开。
+    怎么读：放一条和阿司匹林这一步完全相同的先例（专利号用 USPTO 数据里的写法），提交阿司匹林的分析；
+    再把存好的结果里先例的 url 改回旧写法，冒充旧版本跑出来的分析，然后读先例列表和证据卡。
+    """
+    with ctx.session_factory() as session:
+        session.add(precedent_from_reaction(f"OC(=O)c1ccccc1O.CC(=O)OC(C)=O>>{ASPIRIN}", source="uspto",
+                                            document_id="US06171520B2", year=2001, yield_pct=90))
+        session.commit()
+    analysis = start_analysis(client, account, smiles=ASPIRIN)
+    step = f"/api/analyses/{analysis['id']}/routes/r1/steps/1"
+    fixed = "https://patents.google.com/patent/US6171520"
+    # 新跑的分析：存进去的就是能打开的写法
+    listing = client.get(f"{step}/precedents", headers=account["headers"]).json()
+    assert [p["url"] for p in listing["precedents"]] == [fixed]
+
+    # 冒充旧版本跑出来的分析：把结果里每条先例的 url 改成旧写法（专利号原样接在地址后面）。
+    # result 是加密的 JSON 列，要整体重新赋值才会写回数据库（security.py 的 EncryptedJSON），所以先深拷贝一份再改
+    with ctx.session_factory() as session:
+        stored = session.get(models.Analysis, analysis["id"])
+        result = copy.deepcopy(stored.result)
+        for reaction in result["reactions"].values():
+            for precedent in reaction["evidence"]["precedents"]:
+                precedent["url"] = "https://patents.google.com/patent/US06171520B2"
+        stored.result = result
+        session.commit()
+
+    # 先例列表、证据卡上的先例、卡上的来源 P1，给的都是重新拼的链接
+    listing = client.get(f"{step}/precedents", headers=account["headers"]).json()
+    assert [p["url"] for p in listing["precedents"]] == [fixed]
+    card = client.get(step, headers=account["headers"]).json()
+    assert [p["url"] for p in card["precedents"]] == [fixed]
+    assert [s["url"] for s in card["sources"] if s["id"] == "P1"] == [fixed]
 
 
 # ---------------------------------------------------------------- 任务：先看初步结果、取消、恢复
