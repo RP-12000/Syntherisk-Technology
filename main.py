@@ -13,17 +13,21 @@
     它不对应 PPT 里的某一个业务模块，也不对应界面上的按钮：它是整个后端（M0–M14、MQ）的启动入口。
 
 谁调用它、它依赖谁
-    没有别的代码导入它。在 PyCharm 里运行，或者在项目根目录执行 python main.py。
-    它依赖 syntherisk/config.py 的 Settings（只读 HOST、PORT、APP_ENV 三项）和 uvicorn。
+    在 PyCharm 里运行，或者在项目根目录执行 python main.py。
+    另外，uvicorn main:app 会导入它，只为了拿 app（见下面“另外几种启动方式”）。
+    它依赖 syntherisk/config.py 的 Settings（只读 HOST、PORT、APP_ENV 三项）、syntherisk/main.py 的 app 和 uvicorn。
 
-另外两种启动方式
+另外几种启动方式
     uvicorn syntherisk.main:app    不经过这个文件。这时 .env 里的 HOST、PORT 不起作用，
                                    监听地址和端口要用 uvicorn 自己的 --host、--port 参数给。
+    uvicorn main:app               同上，只是从这个文件拿 app。部署到 Railway 时，它的构建工具 Railpack
+                                   认出 FastAPI 项目后固定用这条命令启动（加上 --host 0.0.0.0 --port $PORT），
+                                   所以这里要有 app。
     python -m syntherisk.worker    后台 Worker 进程，只在 QUEUE_BACKEND=redis 时才需要另外起
                                    （见 syntherisk/worker.py）。
 
 本文件里有什么
-    没有函数和类，只有文件末尾的一段启动代码（if __name__ == "__main__"）。
+    没有函数和类，只有从 syntherisk/main.py 引过来的 app，和文件末尾的一段启动代码（if __name__ == "__main__"）。
 """
 
 import logging
@@ -31,6 +35,8 @@ import logging
 import uvicorn
 
 from syntherisk.config import Settings
+# 给 uvicorn main:app 用的。import 它只建应用对象、读一次配置，不连数据库（见 syntherisk/main.py 的 create_app）
+from syntherisk.main import app  # noqa: F401
 
 # 只有“直接运行这个文件”时才启动服务；被别的代码 import 时，下面这段不执行
 if __name__ == "__main__":
