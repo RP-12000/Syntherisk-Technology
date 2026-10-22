@@ -80,6 +80,8 @@ pytest 自带的夹具：
             引擎格式的路线树整理成后端的结构；读不出来的路线跳过并提示，重复的路线只留一条
         test_pipeline_uses_the_engines_stock_flags_and_model_evidence
             库存和在售试剂表交给引擎当终点；引擎说在售的原料算可购买；模型依据进证据卡，但不算文献证据
+        test_the_engine_gets_the_target_in_its_standard_tautomer
+            目标分子画成亚胺醇写法时，交给引擎的是酰胺写法；结果里说明换过写法，路线照样对得上目标分子
         test_steps_with_atom_maps_are_matched_to_precedents_by_reaction_center
             带原子映射的步骤按反应中心认先例；先例库是旧版本导入的时退回按指纹比，并提醒重新导入
         test_incomplete_routes_from_the_engine_are_kept_and_reported
@@ -823,6 +825,55 @@ def test_pipeline_uses_the_engines_stock_flags_and_model_evidence(client, accoun
     assert next(s for s in card["sources"] if s["id"] == "MODEL")["label"] == "逆合成模型依据（不是文献证据）"
 
 
+def test_the_engine_gets_the_target_in_its_standard_tautomer(client, account, ctx):
+    """目标分子画成亚胺醇写法时，交给引擎的是酰胺写法；结果顶部说明换过写法，引擎给的路线照样对得上目标分子。
+
+    保证的行为：pipeline.AnalysisRunner._search 用 chem.standard_tautomer 规范交给引擎的目标分子，
+        换了写法时 result["warnings"] 里多一句说明；路线树的根是酰胺写法，routes.build_skeleton 按 key14 照样认作目标分子。
+    怎么读：目标是乙酰苯胺的亚胺醇写法 CC(O)=Nc1ccccc1。假引擎记下收到的请求，返回一条一步的路线：
+        苯胺 + 乙酸酐 → 乙酰苯胺，根节点写成酰胺。
+    为什么重要：反应模板几乎都写成酰胺这类常见写法。实测 2026-10-22，青霉素 G 写成亚胺醇时，
+        AiZynthFinder 搜不到“6-APA + 苯乙酰氯”这一步。
+    """
+    class StubAiZynth:
+        """假的逆合成引擎（同上一个测试）：记下收到的请求，返回一条写死的一步路线。"""
+
+        name = "aizynthfinder"
+        requests = []
+
+        def search(self, request, should_cancel=None):
+            """记下请求，返回“苯胺 + 乙酸酐 → 乙酰苯胺”这一条路线。"""
+            self.requests.append(request)
+            tree = {
+                "type": "mol", "smiles": "CC(=O)Nc1ccccc1", "is_chemical": True, "in_stock": False,
+                "scores": {"state score": 0.99}, "metadata": {"is_solved": True},
+                "children": [{
+                    "type": "reaction", "is_reaction": True,
+                    "metadata": {"template_hash": "acyl", "classification": "N-acylation",
+                                 "policy_probability": 0.5},
+                    "children": [
+                        {"type": "mol", "smiles": "Nc1ccccc1", "is_chemical": True, "in_stock": True},
+                        {"type": "mol", "smiles": "CC(=O)OC(C)=O", "is_chemical": True, "in_stock": True},
+                    ],
+                }],
+            }
+            return SearchResult(engine=self.name, version="4.4.1", routes=[{"tree": tree, "score": 0.9}],
+                                stats={"number_of_nodes": 12})
+
+        def describe(self):
+            """引擎约定要有的方法，跑分析时用不到。"""
+            return {"engine": self.name}
+
+    ctx.retro_engine = StubAiZynth()
+    analysis = start_analysis(client, account, smiles="CC(O)=Nc1ccccc1")
+    assert analysis["status"] == "succeeded", analysis["error"]
+    # 交给引擎的是酰胺写法
+    assert StubAiZynth.requests[0].target_smiles == "CC(=O)Nc1ccccc1"
+    result = client.get(f"/api/analyses/{analysis['id']}/result", headers=account["headers"]).json()
+    # 路线树的根（酰胺写法）和目标（亚胺醇写法）key14 相同，所以这条路线没有被当成“终点不是目标分子”丢掉
+    assert len(result["routes"]) == 1
+    assert "目标分子按标准互变异构体写法搜索：CC(=O)Nc1ccccc1（和输入的是同一个分子）" in result["warnings"]
+
 def test_steps_with_atom_maps_are_matched_to_precedents_by_reaction_center(client, account, ctx):
     """引擎给的步骤带原子映射、先例库也带：同类反应按“改了哪些键”认，不按指纹。
 
@@ -1009,7 +1060,8 @@ def test_bridge_adds_exclusions_after_aizynthfinder_has_reset_its_own_list(monke
     保证的行为：syntherisk/modules/aizynth_bridge.py 的 run（真正调用 AiZynthFinder 的那段脚本）：
         先 prepare_tree()，再把 excluded_smiles 里的原料逐个加进排除名单，然后才 tree_search()
         搜索的终点 = 引擎自己的在售清单 + 我们的在售试剂表 + 客户库存；“仅用库存”时只有客户库存
-        单步模型、过滤模型和三个搜索参数（最多几步、最多几轮、最长多少秒）照请求里给的设
+        单步模型（连同它每一步试几个模板、概率累计到多少为止）、过滤模型和三个搜索参数
+        （最多几步、最多几轮、最长多少秒）照请求里给的设
         返回值里每条路线带上分数和“是否拆到底”，统计数字原样带回
     对应按钮 B11“右键 · 排除试剂”：路线被排光以后重新搜索时，排除的试剂通过 excluded_smiles 交给引擎。
     怎么读：这里没有用真的 AiZynthFinder。测试写了三个假类（Stock、Policy、Finder），照着真库的接口，
@@ -1043,13 +1095,22 @@ def test_bridge_adds_exclusions_after_aizynthfinder_has_reset_its_own_list(monke
             self.excluded.add(molecule.smiles)
 
     class Policy:
-        """假的模型选择器，顶替 expansion_policy（单步模型）和 filter_policy（过滤模型）：只记下选了哪一个。"""
+        """假的模型选择器，顶替 expansion_policy（单步模型）和 filter_policy（过滤模型）：记下选了哪一个，
+        以及 run() 往模型对象上设了什么（每一步试几个模板）。"""
 
         selected = None
+
+        def __init__(self):
+            """按名字存放的“模型”。真的是加载好的模型对象；这里每个都只是一个能随便挂属性的空对象。"""
+            self.models = {}
 
         def select(self, key):
             """记下 run() 选的是哪个模型（名字）。"""
             self.selected = key
+
+        def __getitem__(self, key):
+            """真的是按名字取出加载好的模型对象（policy[名字]）；这里第一次取的时候新建一个空对象。"""
+            return self.models.setdefault(key, types.SimpleNamespace())
 
     class Finder:
         """假的 AiZynthFinder，顶替 aizynthfinder.aizynthfinder.AiZynthFinder 这个类。
@@ -1124,7 +1185,8 @@ def test_bridge_adds_exclusions_after_aizynthfinder_has_reset_its_own_list(monke
     # 交给桥接脚本的请求，也就是 request.json 的内容（各个键的含义见 aizynth_bridge.py 的文件头）。
     # 库存里是苯酚，在售试剂表里是碘甲烷（各用它的 InChIKey），用户排除的是乙酰氯 CC(=O)Cl
     request = {"config": "config.yml", "target_smiles": ASPIRIN, "stock": "zinc", "expansion_policy": "uspto",
-               "filter_policy": "uspto", "max_steps": 4, "iteration_limit": 50, "time_limit": 60, "stock_mode": "inventory_first",
+               "filter_policy": "uspto", "cutoff_number": 300, "cutoff_cumulative": 1.0,
+               "max_steps": 4, "iteration_limit": 50, "time_limit": 60, "stock_mode": "inventory_first",
                "inventory_inchikeys": ["ISWSIDIOOBJBQZ-UHFFFAOYSA-N"], "catalog_inchikeys": ["INQOMBQAUSQDDS-UHFFFAOYSA-N"],
                "excluded_smiles": ["CC(=O)Cl"]}
     result = aizynth_bridge.run(request)
@@ -1138,6 +1200,8 @@ def test_bridge_adds_exclusions_after_aizynthfinder_has_reset_its_own_list(monke
     assert finder.stock.loaded["inventory"] == ["ISWSIDIOOBJBQZ-UHFFFAOYSA-N"]
     assert finder.stock.loaded["catalog"] == ["INQOMBQAUSQDDS-UHFFFAOYSA-N"]
     assert (finder.expansion_policy.selected, finder.filter_policy.selected) == ("uspto", "uspto")
+    # 每一步试的模板数和累计概率设到了选中的单步模型上（AiZynthFinder 自己的默认是 50 和 0.995）
+    assert vars(finder.expansion_policy.models["uspto"]) == {"cutoff_number": 300, "cutoff_cumulative": 1.0}
     search = finder.config.search
     # 请求里的 max_steps 在 AiZynthFinder 那边叫 max_transforms
     assert (search.max_transforms, search.iteration_limit, search.time_limit) == (4, 50, 60)

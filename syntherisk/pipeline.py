@@ -510,9 +510,12 @@ class AnalysisRunner:
         # attempts 在 run_analysis() 里每跑一次加 1，所以第一次跑时是 1，retry 是 0；
         # 之后同一行每多跑一次（B11 触发的重新搜索、服务重启后的恢复），retry 就加 1
         retry = max(0, analysis.attempts - 1)
+        # 交给引擎的是标准互变异构体写法：反应模板是从专利反应里抽的，那里几乎都写成酰胺这类常见写法，
+        # 用户画成亚胺醇时模板对不上（chem.standard_tautomer）。只换 key14 不变的写法，结果里的分子照样对得上
+        search_smiles = chem.standard_tautomer(analysis.target["smiles"])
         # 搜索请求。演示引擎只用其中的 target_smiles；其余各项是给 AiZynthFinder 的
         request = SearchRequest(
-            target_smiles=analysis.target["smiles"],
+            target_smiles=search_smiles,
             # 步数上限：默认由复杂度档位决定（data/scoring.toml 的 [complexity]，现在是简洁 3、平衡 6、探索 10），
             # 高级参数和一句话要求可以改
             max_steps=effective.max_steps,
@@ -539,6 +542,13 @@ class AnalysisRunner:
         # build_skeleton 把它整理成 result 的骨架；读不出来的、终点不是目标分子的、一步都没拆的、
         # 重复的路线在这一步被丢掉
         self.result = build_skeleton(search, analysis.target["smiles"], ctx.reference)
+        if search_smiles != analysis.target["smiles"]:
+            # 换了写法要告诉用户：路线树上的目标分子是按标准写法拆的
+            self.result["warnings"].append(i18n.tr(
+                "目标分子按标准互变异构体写法搜索：{smiles}（和输入的是同一个分子）",
+                "The target was searched in its standard tautomeric form: {smiles} "
+                "(the same molecule as the input)",
+                smiles=search_smiles))
         # 第 1 阶段的约束标签（R2）抄一份进结果
         self.result["constraint_tags"] = effective.tags
         analysis.engine = search.engine

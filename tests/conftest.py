@@ -70,7 +70,7 @@ from syntherisk.taskqueue import build_queue
 #
 # 布洛芬。data/demo_routes/ibuprofen.json 里有三条路线：格氏羧基化（4 步）、Boots（6 步）、BHC（3 步）。
 # 三条路线的第 1 步都是由异丁基苯和乙酸酐做 4-异丁基苯乙酮。
-# 这个写法没有标明手性碳的构型，所以结构校验会提示“1 个立体中心未指定，按外消旋处理”。
+# 这个写法没有标明手性碳的构型，所以结构校验会提示“1 个立体中心未指定，按外消旋处理；……”。
 IBUPROFEN = "CC(C)Cc1ccc(cc1)C(C)C(=O)O"
 # 阿司匹林（乙酰水杨酸）。data/demo_routes/aspirin.json 里有三条路线：
 # 乙酸酐酰化（1 步）、乙酰氯酰化（1 步）、从苯酚出发（Kolbe–Schmitt，2 步）。

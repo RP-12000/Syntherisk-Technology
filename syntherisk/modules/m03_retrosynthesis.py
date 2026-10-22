@@ -308,8 +308,8 @@ class AiZynthEngine:
     def _payload(self, request: SearchRequest) -> dict[str, Any]:
         """把一次搜索的全部输入拼成一个字典，也就是交给 aizynth_bridge 的 request.json 的内容。
 
-        config、stock、expansion_policy、filter_policy 四项来自配置（配置文件的路径，在售清单、单步模型、
-        过滤模型的名字），其余来自 SearchRequest。每个键的含义见 aizynth_bridge.py 文件头的说明。
+        config、stock、expansion_policy、filter_policy、cutoff_number、cutoff_cumulative 六项来自配置
+        （配置文件的路径，在售清单、单步模型、过滤模型的名字，单步模型每步试几个模板），其余来自 SearchRequest。每个键的含义见 aizynth_bridge.py 文件头的说明。
         谁在用：search()。
         """
         settings = self.settings
@@ -319,6 +319,8 @@ class AiZynthEngine:
             "stock": settings.aizynth_stock,
             "expansion_policy": settings.aizynth_expansion_policy,
             "filter_policy": settings.aizynth_filter_policy,
+            "cutoff_number": settings.aizynth_cutoff_number,
+            "cutoff_cumulative": settings.aizynth_cutoff_cumulative,
             "max_steps": request.max_steps,
             "iteration_limit": request.iteration_limit,
             "time_limit": request.time_limit,

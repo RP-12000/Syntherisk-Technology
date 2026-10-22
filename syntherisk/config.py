@@ -171,6 +171,14 @@ class Settings(BaseSettings):
     # 另起进程搜索时，后端在这个时间之外再等 300 秒（加载模型要几十秒），还没结束才判为超时。
     # 谁在读：pipeline.py 的 _search()
     aizynth_time_limit: int = 120  # 秒；到时间就停，不管搜了几轮
+    # AIZYNTH_CUTOFF_NUMBER：单步模型每一步最多试多少个反应模板；AIZYNTH_CUTOFF_CUMULATIVE：模型给的概率
+    # 从高到低累计到这个数就不再往下试。两个条件先到哪个算哪个。AiZynthFinder 自己的默认是 50 和 0.995。
+    # 实测（2026-10-22，README 的“AiZynthFinder”一节有表）：每步 50 个时，1,4-二苯甲基苯合理的傅-克拆法排第 253 位、
+    # 根本试不到，给的是六七步的绕远路线；300 个时给出 3 步的傅-克路线，每次搜索多用 10%–80% 的时间，峰值内存多约 0.5 GB。
+    # 累计概率要同时放开到 1.0，否则累计到 0.995 就停，数字放大了也不起作用。
+    # 谁在读：modules/m03_retrosynthesis.py 的 AiZynthEngine._payload()，交给 aizynth_bridge.run() 设到单步模型上
+    aizynth_cutoff_number: int = 300
+    aizynth_cutoff_cumulative: float = 1.0
 
     # --- 外部免费接口 ---
     # ENABLE_PUBCHEM：要不要用 PubChem（按名称或 CAS 号查结构、查 GHS 危害分类、给没有名字的中间体取名）。

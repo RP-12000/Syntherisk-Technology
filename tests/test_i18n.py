@@ -151,7 +151,7 @@ def test_default_stays_chinese_and_lang_en_or_header_gives_english(client, accou
     # 目标分子的立体化学提示带数字，英文是提交时存在 target 里的（messages_en）：
     # 中文返回里没有这个键，格式和以前一样；英文返回里它顶替了 messages，自己也不出现
     status = client.get(f"/api/analyses/{analysis['id']}", headers=headers).json()
-    assert status["target"]["messages"] == ["1 个立体中心未指定，按外消旋处理"]
+    assert status["target"]["messages"] == ["1 个立体中心未指定，按外消旋处理；要的是某一个立体异构体的话请补上构型，不然搜索认不出带构型的原料"]
     assert set(status["target"]) == {"smiles", "key14", "name", "formula", "mol_weight", "messages"}
     status = client.get(f"/api/analyses/{analysis['id']}", headers=headers, params=EN).json()
     assert len(status["target"]["messages"]) == 1 and not HAN.search(status["target"]["messages"][0])

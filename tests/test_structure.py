@@ -43,6 +43,8 @@ m07_conditions.name_reaction（按官能团变化给反应起名）和 m09_green
     同一个物质、两个结构的比较
         test_same_molecule_written_differently_has_one_identity
             同一个分子换一种写法 key14 不变；立体异构体 key14 相同、完整的 InChIKey 不同
+        test_targets_are_searched_in_their_standard_tautomer_with_stereo_kept
+            交给逆合成引擎之前换成标准互变异构体写法，构型保留；换了会改变 key14 的写法不换
         test_structure_diff_marks_the_atoms_that_differ
             两个结构能找出公共部分，并标出各自多出来的原子
     反应：同一反应、同类反应（不靠原子映射的办法）
@@ -102,7 +104,8 @@ def test_valid_smiles_reports_formula_weight_and_open_stereocenter():
     界面上 A1 画结构、A2 粘贴 SMILES 之后看到的预览，就是接口 POST /api/structures/validate 把这个结果转成的 JSON。
     怎么读：直接拿布洛芬的 SMILES 调函数（不经过接口，没有夹具），逐项核对返回的 StructureInfo。
     为什么重要：这些内容原样显示在结构预览里，用户靠分子式和分子量确认自己输对了结构。
-    布洛芬有一个手性碳，而这个 SMILES 没写它的构型：后端按外消旋处理，messages 里的那句话就是告诉用户这一点的。
+    布洛芬有一个手性碳，而这个 SMILES 没写它的构型：后端按外消旋处理，messages 里的那句话就是告诉用户这一点的，
+    并提醒要单一构型的话补上构型（不写构型时，搜索认不出库存和在售清单里带构型的原料）。
     """
     info = chem.validate_structure(IBUPROFEN)
     assert info.valid
@@ -113,7 +116,7 @@ def test_valid_smiles_reports_formula_weight_and_open_stereocenter():
     # 连着羧基的那个碳上有四个不同的基团（氢、甲基、羧基、芳环），是手性碳；
     # SMILES 里没有用 @ / @@ 标它的构型，所以算“未指定”
     assert info.unspecified_stereocenters == 1
-    assert info.messages == ["1 个立体中心未指定，按外消旋处理"]
+    assert info.messages == ["1 个立体中心未指定，按外消旋处理；要的是某一个立体异构体的话请补上构型，不然搜索认不出带构型的原料"]
     # 默认会带一张 320 × 220 的结构图（SVG 是一段 XML 文本）。RDKit 画出来的以 XML 声明 <?xml 开头；
     # 这里两种情况都接受：以 <?xml 开头，或者文本里有 <svg 标签
     assert info.svg.startswith("<?xml") or "<svg" in info.svg
@@ -201,6 +204,31 @@ def test_same_molecule_written_differently_has_one_identity():
     # 断言对两者是对称的，结论不受影响
     r, s = chem.mol_record("C[C@H](N)C(=O)O"), chem.mol_record("C[C@@H](N)C(=O)O")
     assert r.key14 == s.key14 and r.inchikey != s.inchikey
+
+
+def test_targets_are_searched_in_their_standard_tautomer_with_stereo_kept():
+    """交给逆合成引擎的目标分子换成标准的互变异构体写法，立体构型一个不丢；换了会改变 key14 的写法不换。
+
+    保证的行为：chem.standard_tautomer（流水线第 2 阶段 pipeline.AnalysisRunner._search 用它）。
+    怎么读：
+        亚胺醇写法的青霉素 G（不带构型、带三个手性中心的构型各一次）换成酰胺写法，带构型的那个三个构型都还在；
+        2-羟基吡啶换成 2-吡啶酮；S-布洛芬本来就是标准写法，原样返回、构型还在；
+        丙-1-烯-2-醇（丙酮的烯醇式）原样返回：InChI 把它和丙酮当成两个分子，换了 key14 就变了；读不出来的原样返回。
+    为什么重要：反应模板是从专利反应里抽的，几乎都写成酰胺这类常见写法。实测 2026-10-22，青霉素 G 写成亚胺醇时
+    搜不到“6-APA + 苯乙酰氯”这一步；而 RDKit 默认的规范化会抹掉手性碳的构型，带构型才买得到的 6-APA 又对不上库存。
+    """
+    iminol = "CC1(C)SC2C(N=C(O)Cc3ccccc3)C(=O)N2C1C(=O)O"
+    assert chem.standard_tautomer(iminol) == "CC1(C)SC2C(NC(=O)Cc3ccccc3)C(=O)N2C1C(=O)O"
+    with_stereo = "CC1(C)S[C@@H]2[C@H](N=C(O)Cc3ccccc3)C(=O)N2[C@H]1C(=O)O"
+    amide = chem.standard_tautomer(with_stereo)
+    assert amide == "CC1(C)S[C@@H]2[C@H](NC(=O)Cc3ccccc3)C(=O)N2[C@H]1C(=O)O"
+    # 换写法不改变“是哪个分子”：key14 一样，完整的 InChIKey（带构型）也一样
+    assert chem.mol_record(amide).inchikey == chem.mol_record(with_stereo).inchikey
+    assert chem.standard_tautomer("Oc1ccccn1") == "O=c1cccc[nH]1"
+    s_ibuprofen = "CC(C)Cc1ccc([C@H](C)C(=O)O)cc1"
+    assert chem.standard_tautomer(s_ibuprofen) == s_ibuprofen
+    assert chem.standard_tautomer("C=C(C)O") == "C=C(C)O"
+    assert chem.standard_tautomer("这不是结构") == "这不是结构"
 
 
 def test_structure_diff_marks_the_atoms_that_differ():

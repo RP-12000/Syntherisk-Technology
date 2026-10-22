@@ -16,6 +16,8 @@ request.json 的字段：
     stock               在售清单的名字（config.yml 里定义的，公开版是 zinc）
     expansion_policy    单步模型的名字（公开版是 uspto）
     filter_policy       过滤模型的名字，可以为空
+    cutoff_number       单步模型每一步最多试多少个反应模板（AiZynthFinder 默认 50，后端默认 300）；没有这一项就不改
+    cutoff_cumulative   单步模型给的概率从高到低累计到多少就不再往下试（默认 0.995，后端默认 1.0）；没有这一项就不改
     max_steps           最多几步
     iteration_limit     最多搜几轮
     time_limit          最长搜多少秒
@@ -44,13 +46,15 @@ result.json 的字段（也就是 run() 的返回值）：
     routes    路线的列表，每条是
               {"tree": 路线树, "score": 引擎给这条路线的分数, "solved": 这条路线的原料是不是都在选中的清单里}
               路线树的格式见 m03_retrosynthesis.py 文件头
-    warnings  给用户看的提示，中文句子的列表：哪份清单没加上、哪个过滤模型没加载、哪个原料没能排除
+    warnings  给用户看的提示，中文句子的列表：哪份清单没加上、哪个过滤模型没加载、哪个原料没能排除、
+              每步试的模板数没设上
 
 副作用：加载模型和在售清单（3 GB 多内存）；给客户库存、内置在售试剂表各写一个临时的 .txt 文件，搜索完删掉；
         main() 另外读 request.json、写 result.json。不读写数据库。
 
 本文件里有什么：
     _set_search_option  设一个搜索参数（新旧版本的 AiZynthFinder 放的位置不一样）
+    _set_expansion_cutoffs  设单步模型每一步试几个模板
     _json_safe          把结果里 JSON 存不了的值（numpy 的数字、NaN、元组、集合……）换成存得了的
     _version            装着的 aizynthfinder 的版本号
     run                 做一次搜索：输入是 request 字典，输出是上面说的结果字典
@@ -77,6 +81,33 @@ def _set_search_option(finder, name: str, value: Any) -> None:
     target = getattr(finder.config, "search", finder.config)
     # setattr(对象, 名字, 值) 相当于 对象.名字 = 值，只是名字可以是变量
     setattr(target, name, value)
+
+
+def _set_expansion_cutoffs(finder, name: str, number: Any, cumulative: Any) -> str | None:
+    """设单步模型每一步最多试几个反应模板（cutoff_number），以及概率累计到多少就不再往下试（cutoff_cumulative）。
+
+    单步模型给一个分子的几万个模板各打一个概率，搜索只试排在前面的那些：试满 cutoff_number 个，或者概率从高到低
+    累计到 cutoff_cumulative，先到哪个算哪个。AiZynthFinder 4.x 里这两项是选中的那个单步模型
+    （TemplateBasedExpansionStrategy）的属性，默认取 config.yml 里写的值，没写就是 50 和 0.995。
+    这里改的是已经加载好的模型对象，所以要在 prepare_tree() 之前改：prepare_tree() 会清掉旧的预测缓存。
+
+    参数：finder  AiZynthFinder 对象；name  单步模型的名字（比如 uspto）；
+          number、cumulative  要设的值，None 表示这一项不改。
+    返回：没设上时的一句提示（中文）；设上了、或者两项都是 None 时返回 None。
+    谁在用：run()。
+    """
+    if number is None and cumulative is None:
+        return None
+    try:
+        # expansion_policy 是一个按名字存放单步模型的容器，用 [名字] 取出模型对象
+        strategy = finder.expansion_policy[name]
+        if number is not None:
+            strategy.cutoff_number = int(number)
+        if cumulative is not None:
+            strategy.cutoff_cumulative = float(cumulative)
+    except Exception as exc:  # noqa: BLE001 - 设不上就按模型原来的值搜，记一条提示
+        return f"单步模型每步试的模板数没设上，按它原来的设置搜索：{exc}"
+    return None
 
 
 def _json_safe(value: Any) -> Any:
@@ -199,6 +230,13 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
         # 第 3 步。select 是“在已经加载的几个里选用哪个 / 哪几个”
         finder.stock.select(stocks)
         finder.expansion_policy.select(request.get("expansion_policy") or "uspto")
+        # 单步模型每一步试几个模板（后端默认 300，AiZynthFinder 自己默认 50，见 _set_expansion_cutoffs）
+        cutoff_warning = _set_expansion_cutoffs(
+            finder, request.get("expansion_policy") or "uspto",
+            request.get("cutoff_number"), request.get("cutoff_cumulative"),
+        )
+        if cutoff_warning:
+            warnings.append(cutoff_warning)
         # 过滤模型可以不用；指定了却加载不上时只记一条提示，不用它继续搜
         if request.get("filter_policy"):
             try:

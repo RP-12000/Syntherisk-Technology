@@ -35,6 +35,7 @@ M1 里要联网的那一半（名称、CAS 号转结构，查 PubChem 和 OPSIN�
         inchikey_of          分子的 InChIKey
         MolRecord、mol_record                    一个分子的基本信息（规范 SMILES、key14、分子式、分子量），带缓存
         to_mol、canonical_smiles、key14_of       最常用的三个小函数
+        standard_tautomer    交给逆合成引擎之前，换成标准的互变异构体写法（保留立体构型）
         net_charge、is_salt_like、fragment_key14s  处理盐和离子
     画图
         mol_to_svg、mol_to_png   分子结构图
@@ -69,6 +70,7 @@ import numpy as np
 from rdkit import Chem, RDLogger
 from rdkit.Chem import Descriptors, rdFingerprintGenerator, rdFMCS, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
+from rdkit.Chem.MolStandardize import rdMolStandardize
 
 # 给用户看的校验说明都写成 i18n.tr("中文", "English")：返回的就是中文，同时登记了英文（见 syntherisk/i18n.py）
 from syntherisk import i18n
@@ -94,7 +96,11 @@ MAX_HEAVY_ATOMS = 250
 # 这四句会跟着目标分子存进分析记录（analyses.target），以后别的请求（甚至重启以后）再取出来显示，
 # 那时已经不在当初记对照的那个请求里了。所以不靠 i18n.tr 当场记，而是在导入本模块时把所有可能的数字
 # 都登记成固定对照：个数不会超过重原子数的上限，净电荷的绝对值也一样。一共一千多条，只占一点内存
-_MSG_STEREOCENTERS = ("{n} 个立体中心未指定，按外消旋处理", "Unspecified stereocenters: {n} (treated as racemic)")
+_MSG_STEREOCENTERS = (
+    "{n} 个立体中心未指定，按外消旋处理；要的是某一个立体异构体的话请补上构型，不然搜索认不出带构型的原料",
+    "Unspecified stereocenters: {n} (treated as racemic). If you want one stereoisomer, specify it; "
+    "otherwise the search cannot recognise stereo-defined starting materials",
+)
 _MSG_OPEN_BONDS = ("{n} 个双键的顺反构型未指定", "Double bonds with unspecified E/Z geometry: {n}")
 _MSG_COMPONENTS = ("结构里有 {n} 个不相连的部分（盐或混合物）", "The structure has {n} disconnected parts (a salt or a mixture)")
 _MSG_CHARGE = ("分子带净电荷 {charge:+d}", "The molecule carries a net charge of {charge:+d}")
@@ -386,7 +392,7 @@ def validate_structure(text: str, fmt: str = "auto", *, with_svg: bool = True) -
         StructureInfo。读不出来时 valid=False，原因在 errors 里；读得出来时 valid=True。不抛异常。
     例：
         validate_structure("CC(C)Cc1ccc(cc1)C(C)C(=O)O")   布洛芬
-            → formula "C13H18O2"，mol_weight 206.28，messages ["1 个立体中心未指定，按外消旋处理"]
+            → formula "C13H18O2"，mol_weight 206.28，messages ["1 个立体中心未指定，按外消旋处理；……"]
         validate_structure("C1CC")    环没有闭合
             → valid False，errors ["无法识别这段 SMILES，请检查括号、环闭合数字和元素符号"]
         validate_structure("NO.Cl")   盐酸羟胺
@@ -520,6 +526,37 @@ def key14_of(smiles: str) -> str | None:
     """
     record = mol_record(smiles)
     return record.key14 if record else None
+
+
+def standard_tautomer(smiles: str) -> str:
+    """把分子换成标准的互变异构体写法（亚胺醇写成酰胺、2-羟基吡啶写成 2-吡啶酮……），立体构型保留。
+
+    逆合成模型的反应模板是从专利反应里抽出来的，那里的分子几乎都写成常见的写法。用户画成亚胺醇（N=C(O)）
+    这类写法时模板对不上，搜索就绕远路甚至找不到路线（实测 2026-10-22：青霉素 G 写成亚胺醇时，
+    找不到“6-APA + 苯乙酰氯”这一步）。
+    用的是 RDKit 的 TautomerEnumerator，但关掉了它默认的“抹掉构型”：默认设置会把参与互变异构的手性碳的构型去掉
+    （实测 S-布洛芬、L-丙氨酸、青霉素 G 都丢了构型），搜索时带构型的原料就对不上库存了。
+    只在 key14 不变时才换：InChI 把酰胺和亚胺醇、吡啶酮和羟基吡啶当成同一个分子，酮和烯醇却当成两个。
+    key14 变了的话，流水线按 key14 核对路线终点时就和用户输入的目标对不上，所以烯醇这类写法原样留着。
+
+    参数：smiles  一个分子的 SMILES，一般是校验过的规范写法。
+    返回：标准写法的规范 SMILES；读不出来、规范化出错、或者换了以后 key14 会变时原样返回。
+    例：standard_tautomer("CC(O)=NC") 是 "CNC(C)=O"；standard_tautomer("Oc1ccccn1") 是 "O=c1cccc[nH]1"；
+        standard_tautomer("C[C@H](N)C(=O)O")（L-丙氨酸，本来就是标准写法）和 standard_tautomer("C=C(C)O")（烯醇）原样返回。
+    谁在用：pipeline.AnalysisRunner._search（交给引擎的目标分子）。
+    """
+    mol = to_mol(smiles)
+    if mol is None:
+        return smiles
+    params = rdMolStandardize.CleanupParameters()
+    params.tautomerRemoveSp3Stereo = False
+    params.tautomerRemoveBondStereo = False
+    try:
+        # Canonicalize 返回一个新的分子对象，不改缓存里的那个
+        standard = Chem.MolToSmiles(rdMolStandardize.TautomerEnumerator(params).Canonicalize(mol))
+    except Exception:  # noqa: BLE001 - 规范化出错就用原来的写法，不让一次分析因此失败
+        return smiles
+    return standard if key14_of(standard) == key14_of(smiles) else smiles
 
 
 # is_salt_like 认“金属”用的元素符号表。只有这 27 种；不在表里的金属（比如铱 Ir、金 Au）不按金属算
