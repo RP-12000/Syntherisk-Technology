@@ -50,6 +50,8 @@ m07_conditions.name_reaction（按官能团变化给反应起名）和 m09_green
     反应：同一反应、同类反应（不靠原子映射的办法）
         test_reaction_key_ignores_counter_ions_reagents_and_atom_maps
             “同一反应”的编号不受反应物先后、抗衡离子的影响；带映射的反应 SMILES 能拆成反应物、试剂、产物
+        test_dative_bonds_are_not_taken_for_reaction_separators
+            配位键的 “->” 不当成反应 SMILES 的分隔符，含铂配合物的反应照样拆成三段
         test_reaction_class_fingerprint_groups_reactions_by_type_not_by_substrate
             反应类别指纹：同一类反应换了底物仍然完全相同，不同类的反应相似度低
     反应中心（按原子映射）
@@ -254,6 +256,23 @@ def test_structure_diff_marks_the_atoms_that_differ():
     # identical 看的是两边的 key14 是否相同
     assert chem.structure_diff(IBUPROFEN, IBUPROFEN, with_svg=False)["identical"]
 
+
+def test_dative_bonds_are_not_taken_for_reaction_separators():
+    """反应 SMILES 按 “>” 拆成三段时，配位键 “->” 里的 “>” 不算分隔符。
+
+    保证的行为：m01_structure.py 的 split_reaction_smiles 和用它的 parse_mapped_reaction。
+    怎么读：顺铂类配合物，RDKit 的规范写法里带着 “->” 和 “<-”。拆出来应该正好三段，
+    一步卡铂的合成照样拆成反应物、试剂、产物。
+    为什么重要：先例库里有 12 条这样的反应（USPTO 8 条、期刊 4 条）。以前直接 split(">")，
+    检索碰到它们时整次分析在“文献先例”这一阶段出错（实测 2026-10-22：褪黑素的分析）。
+    """
+    assert chem.split_reaction_smiles("N->[Pt](<-N)(Cl)Cl>O>N->[Pt](<-N)(O)O") == [
+        "N->[Pt](<-N)(Cl)Cl", "O", "N->[Pt](<-N)(O)O"]
+    # 普通的反应照旧：没有试剂时中间那一段是空的
+    assert chem.split_reaction_smiles("CC(=O)O.OCC>>CC(=O)OCC") == ["CC(=O)O.OCC", "", "CC(=O)OCC"]
+    reactants, agents, products, _ = chem.parse_mapped_reaction(
+        "N->[Pt](<-N)(Cl)Cl.O=C(O)C1(C(=O)O)CCC1>>N->[Pt]1(<-N)OC(=O)C2(CCC2)C(=O)O1")
+    assert len(reactants) == 2 and agents == [] and len(products) == 1
 
 def test_reaction_key_ignores_counter_ions_reagents_and_atom_maps():
     """“同一反应”的编号只看反应物和产物是什么；带原子映射的反应 SMILES 能拆成反应物、试剂、产物。

@@ -77,6 +77,8 @@
         2X + Y → Z：这一步把 X 写了两次、专利只写一次，也认作同一反应
     test_a_journal_record_that_writes_the_second_reactant_with_the_reagents_is_the_same_reaction
         期刊记录把第二种原料写在试剂栏里，也认作同一反应，只列一次
+    test_a_precedent_written_with_dative_bonds_does_not_break_the_search
+        库里有含配位键（“->”）的先例时，检索照常完成，不出错
     test_similar_substrate_same_reaction_type_is_graded_by_similarity
         没有同一反应时按同类反应的底物相似度定级；完全没有先例是 E4
     test_a_reaction_with_most_of_the_product_unaccounted_for_gets_no_similar_precedents
@@ -560,6 +562,20 @@ def test_a_journal_record_that_writes_the_second_reactant_with_the_reagents_is_t
     assert [p["document_id"] for p in found["precedents"]].count("J-FISCHER") == 1
     assert not any(p["exact"] for p in found["precedents"] if p["document_id"] == "J-TMSCHN2")
 
+
+def test_a_precedent_written_with_dative_bonds_does_not_break_the_search(ctx):
+    """库里有含配位键的先例（铂配合物的规范写法带 “->”）时，按指纹找相似先例照常完成。
+
+    保证的行为：m05_precedents.py 的 _similar_rows 用 chem.split_reaction_smiles 拆库里存的反应 SMILES。
+    怎么读：放一条“顺铂 + 1,1-环丁烷二羧酸 → 卡铂”的先例；这一步换成二羟基二氨合铂做原料，产物还是卡铂，
+    所以不是同一反应，要按指纹找相似先例，那条先例会被拿出来细比。
+    为什么重要：以前这里直接 split(">")，碰到 “->” 切出四段，整次分析在第 4 阶段出错（实测 2026-10-22）。
+    """
+    carboplatin = "N->[Pt]1(<-N)OC(=O)C2(CCC2)C(=O)O1"
+    _seed(ctx, [(f"N->[Pt](<-N)(Cl)Cl.O=C(O)C1(C(=O)O)CCC1>>{carboplatin}", 80.0)])
+    with ctx.session_factory() as session:
+        found = _search(ctx, session).find(["N->[Pt](<-N)(O)O", "O=C(O)C1(C(=O)O)CCC1"], carboplatin)
+    assert found["level"] is not None and found["n_exact"] == 0
 
 def test_similar_substrate_same_reaction_type_is_graded_by_similarity(ctx):
     """库里没有同一反应时，看同类反应的先例：底物够像是 E2，产率只借够像的那条；完全没有先例是 E4。

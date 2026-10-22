@@ -47,6 +47,7 @@ M1 里要联网的那一半（名称、CAS 号转结构，查 PubChem 和 OPSIN�
         structure_diff       C2：两个结构的公共部分和各自多出来的原子
         parse_query、has_substructure、smarts_pattern、matches_smarts   子结构匹配
     反应
+        split_reaction_smiles                         按 “>” 切开反应 SMILES（配位键 “->” 里的不算）
         parse_reaction_smiles、parse_mapped_reaction   把反应 SMILES 拆成反应物、试剂、产物
     反应中心（要原子映射）
         _atom_type、_outside_type、_alkyl_kind、_bond_label    给原子、基团、键分类
@@ -62,6 +63,7 @@ M1 里要联网的那一半（名称、CAS 号转结构，查 PubChem 和 OPSIN�
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
@@ -964,6 +966,26 @@ def _unmapped_smiles(mol: Chem.Mol) -> tuple[str, bool]:
     return canonical_smiles(Chem.MolToSmiles(mol)) or Chem.MolToSmiles(mol), mapped
 
 
+# 反应 SMILES 的三段用 “>” 隔开，可 RDKit 写配位键时也用 “->”（顺铂写成 N->[Pt](<-N)(Cl)Cl），
+# 那个 “>” 不是分隔符。规则：前面紧挨着 “-” 的 “>” 不算分隔符
+_REACTION_SEPARATOR = re.compile(r"(?<!-)>")
+
+
+def split_reaction_smiles(reaction_smiles: str) -> list[str]:
+    """把 “反应物>试剂>产物” 按分隔符切开；配位键 “->” 里的 “>” 不算分隔符。
+
+    先例库里有含铂配合物的反应（USPTO 8 条、期刊 4 条），规范 SMILES 里带着 “->”。直接 split(">") 会切成
+    四段以上，检索到这些先例时整次分析在第 4 阶段出错（实测 2026-10-22：褪黑素的分析）。
+    参数：reaction_smiles  反应 SMILES，不带 CXSMILES 扩展（空格后面那部分）。
+    返回：切开的各段，正常是三段；段数不对由调用方处理。
+    例：split_reaction_smiles("N->[Pt](<-N)(Cl)Cl>O>N->[Pt](<-N)(O)O")
+        是 ["N->[Pt](<-N)(Cl)Cl", "O", "N->[Pt](<-N)(O)O"]。
+    谁在用：本文件的 parse_mapped_reaction；m05_precedents.PrecedentSearch 读库里存的反应 SMILES 的地方
+            （_reagent_side_rows、_similar_rows）。
+    """
+    return _REACTION_SEPARATOR.split(reaction_smiles)
+
+
 def parse_reaction_smiles(reaction_smiles: str) -> tuple[list[str], list[str], list[str]] | None:
     """把 反应物>试剂>产物 拆成三组规范 SMILES，去掉原子映射和 CXSMILES 扩展。
 
@@ -1002,7 +1024,7 @@ def parse_mapped_reaction(reaction_smiles: str) -> tuple[list[str], list[str], l
     """
     # 取第一个空格之前的部分：空格后面是 CXSMILES 扩展
     core = reaction_smiles.strip().split(" ")[0]
-    parts = core.split(">")
+    parts = split_reaction_smiles(core)
     if len(parts) != 3:
         return None
     # mols[0]、mols[1]、mols[2] 依次是反应物、试剂、产物三组分子

@@ -841,8 +841,8 @@ class PrecedentSearch:
             query = query.where(models.ReactionPrecedent.reaction_key.not_in(keys))
         found = []
         for row in self.session.scalars(query):
-            # 存的反应 SMILES 是整理过的 “反应物>试剂>产物”，按 “>” 正好切成三段
-            parts = row.reaction_smiles.split(">")
+            # 存的反应 SMILES 是整理过的 “反应物>试剂>产物”，按分隔符正好切成三段（配位键 “->” 不算，见 chem.split_reaction_smiles）
+            parts = chem.split_reaction_smiles(row.reaction_smiles)
             if len(parts) != 3:
                 continue
             listed = {chem.main_fragment_key14(smiles) for smiles in parts[0].split(".") if smiles}
@@ -1050,8 +1050,12 @@ class PrecedentSearch:
         found = []
         # 第二步细比：对筛出来的每一条，用它存着的反应 SMILES 现算一遍“各种原子类型增减了几个”，和这一步的数着个数比
         for row in self._dedupe([r for r in rows if r.reaction_key not in exclude_keys]):
-            # 库里存的格式是 “反应物>试剂>产物”，反应物之间用 “.” 隔开
-            their_reactants, _, their_product = row.reaction_smiles.split(">")
+            # 库里存的格式是 “反应物>试剂>产物”，反应物之间用 “.” 隔开。配位键 “->” 里的 “>” 不是分隔符
+            # （chem.split_reaction_smiles）；万一切出来不是三段，这条先例跳过，不让整次检索出错
+            parts = chem.split_reaction_smiles(row.reaction_smiles)
+            if len(parts) != 3:
+                continue
+            their_reactants, _, their_product = parts
             their_delta = chem.environment_delta(their_reactants.split("."), [their_product])
             match = chem.delta_similarity(query_delta, their_delta) if their_delta is not None else 0.0
             if match >= related:
