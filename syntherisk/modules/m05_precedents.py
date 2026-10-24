@@ -18,6 +18,10 @@
 “底物像不像”两种办法都用产物的结构指纹判断。
 先例库是空的时候不评等级，也不给文献分，而不是把所有步骤都标成 E4。
 
+证据等级和文献分只看期刊论文（和数据集），专利不计入（2026-10-24 起，data/scoring.toml 的 literature_doc_types）。
+专利照样检索、照样列在证据卡上（排在期刊后面，界面上默认折叠），借用试剂和条件、统计产率时也照样算；
+把专利也算上的等级另记在 level_with_patents。专利里有更接近的先例时，说明里会补一句。
+
 ---- 在整个系统里的位置 ----
 
 对应 PPT 的模块 M5，是一次分析的第 4 阶段“文献先例”（pipeline.AnalysisRunner._precedents）：
@@ -62,7 +66,8 @@ LibraryVersion 两张表）、reference（scoring.toml 的 [evidence] 一节、d
          否则 -> 整步按指纹比（_similar_rows）。反应物明显没给全时不找。
     4. 定级（_grade）：同类先例里最高的底物相似度 ≥ 0.7 -> E2；≥ 0.2 -> E3；
        只有相关反应 -> E3 的最低一段；什么都没有 -> E4（分数看逆合成模型给的概率）。
-    5. 产率（_yield_info）：只取 E1 的同一反应、E2 的高相似同类先例报道的值。
+       定两次：只用计入文献依据的先例（期刊）定 level 和文献分；全部先例（专利也算）定 level_with_patents。
+    5. 产率（_yield_info）：按 level_with_patents，只取 E1 的同一反应、E2 的高相似同类先例报道的值。
 
 ---- 内存索引（PrecedentIndex）----
 
@@ -73,7 +78,8 @@ LibraryVersion 两张表）、reference（scoring.toml 的 [evidence] 一节、d
 
 ---- 本文件里有什么（按阅读顺序）----
 
-    CLASS_BYTES、STRUCTURE_BYTES、DOC_TYPE_LABELS、_NUMBER、_US_PATENT、_US_PUBLICATION、_DOI   常量
+    CLASS_BYTES、STRUCTURE_BYTES、DOC_TYPE_LABELS、DOC_TYPE_ORDER、DEFAULT_LITERATURE_DOC_TYPES、
+    _NUMBER、_US_PATENT、_US_PUBLICATION、_DOI   常量
     parse_yield              从 “85%”“57 to 60%” 这样的文字里取产率
     document_url             给先例拼原文链接（DOI 或 Google Patents）；拼不出能打开的链接时是 None
     google_patents_number    专利号 -> Google Patents 地址里的写法
@@ -93,6 +99,9 @@ LibraryVersion 两张表）、reference（scoring.toml 的 [evidence] 一节、d
         _similar_rows        按指纹找相似先例（粗筛 + 细比）
         _unaccounted_atoms   反应物是不是没给全
         _dedupe              同一篇文献里的同一个反应只留一条
+        literature_doc_types 计入文献依据的文献类型
+        _grading_inputs      从先例里取出定级要用的几个数
+        _uncounted_note      专利里有更接近的先例时补的那句说明
         _grade               定等级和文献分
         _yield_info          汇总文献报道的产率
         _to_dict             一条先例 -> 证据卡里的一项
@@ -131,6 +140,10 @@ DOC_TYPE_LABELS = {
 # 每种类型各自检索、各自最多列 max_precedents 条，证据卡上按这个先后分组列出（见 PrecedentSearch.find）。
 # 不在这里的类型（以后新加的）排在它们后面
 DOC_TYPE_ORDER = ("journal", "patent", "dataset")
+# 计入“文献依据”（证据等级、文献分）的文献类型。scoring.toml 的 [evidence] literature_doc_types 可以改；
+# 没配时用这里的值。专利不在里面：专利照样检索、照样列在证据卡上（默认折叠），也照样用来借试剂、条件和产率，
+# 只是不决定证据等级（2026-10-24 Anna 的要求）。想让专利重新计入，在配置里加上 "patent"
+DEFAULT_LITERATURE_DOC_TYPES = ("journal", "dataset")
 
 
 def doc_type_rank(doc_type: str | None) -> int:
@@ -618,18 +631,24 @@ class PrecedentSearch:
             center             见上；逆合成引擎没给原子映射时是 None。
         返回（一个字典）：
             db_empty          先例库是不是空的
-            level             "E1" / "E2" / "E3" / "E4"；先例库是空的时是 None，表示没有评估
+            level             "E1" / "E2" / "E3" / "E4"；先例库是空的时是 None，表示没有评估。
+                              只按计入文献依据的文献类型评（literature_doc_types，现在是期刊论文和数据集，专利不算）
             label             等级的名字：文献直接报道 / 高相似先例 / 低相似先例 / 仅模型预测
             stars             星数 3 / 2 / 1 / 0；没评估是 None
-            literature_score  “文献依据”这一维的分数（0–100，一位小数）；没评估是 None
+            literature_score  “文献依据”这一维的分数（0–100，一位小数），和 level 一样不算专利；没评估是 None
+            level_with_patents  把专利也算上时的等级（没评估是 None）。借用先例的试剂和条件、产率取哪些先例、
+                              M10 的置信度和“没有先例”“最低证据等级”两条筛选都按它
+            literature_doc_types  这次计入文献依据的文献类型，如 ["dataset", "journal"]
+            uncounted_note    专利里有比计入的先例更接近的先例时，补在 basis 后面的那句话；没有是 None
             precedents        先例列表，按文献类型分组：期刊论文在前、专利在后（DOC_TYPE_ORDER），每种类型各自最多
-                              max_precedents 条（现在是 8），组内同一反应的排最前。每一项的键见 _to_dict()
-            n_exact           库里“同一反应”的先例有几条（去重以后的数；可能比列出来的多）
-            n_exact_by_type   上一项按文献类型分开数，如 {"journal": 1, "patent": 4}
+                              max_precedents 条（现在是 8），组内同一反应的排最前。专利照样列出来。每一项的键见 _to_dict()
+            n_exact           计入文献依据的“同一反应”先例有几条（去重以后的数；可能比列出来的多）。专利里的不算
+            n_exact_by_type   每种文献类型里各有几条同一反应的记录，专利也数，如 {"journal": 1, "patent": 4}
             best_ref          借用试剂和条件文字时用的那条先例的编号（期刊优先，见 _best_ref）；没有先例是 None
-            best_similarity   E1 时是 1.0；否则是同类反应先例里最高的底物相似度（三位小数）；没有同类先例是 None
+            best_similarity   E1 时是 1.0；否则是计入文献依据的同类反应先例里最高的底物相似度（三位小数）；没有是 None
+            best_similarity_with_patents  同上，专利也算；和 level_with_patents 对应
             compared_by       这一步是怎么判断“同类反应”的："center" 按反应中心，"fingerprint" 按指纹；没评估是 None
-            yield             文献报道的产率，见 _yield_info()。流水线把它从字典里拿出去，另存为 reaction["yield"]
+            yield             文献报道的产率，见 _yield_info()；专利报道的也算。流水线把它从字典里拿出去，另存为 reaction["yield"]
             basis             一句话说明这个等级是怎么来的，证据卡上直接显示
         副作用：
             读数据库：按反应编号查一次同一反应，再按 id 取候选先例的完整内容（最多两次）。
@@ -649,6 +668,10 @@ class PrecedentSearch:
                 "literature_score": None,
                 "precedents": [],
                 "n_exact": 0,
+                "level_with_patents": None,
+                "best_similarity_with_patents": None,
+                "literature_doc_types": sorted(self.literature_doc_types()),
+                "uncounted_note": None,
                 "best_similarity": None,
                 "compared_by": None,
                 "yield": {"source": "none", "label": _NO_YIELD_LABEL, "refs": []},
@@ -717,15 +740,15 @@ class PrecedentSearch:
         for number, precedent in enumerate(precedents, 1):
             precedent["ref"] = f"P{number}"
 
-        n_exact = len(exact_rows)
-        # similar 已经排好序（同类在前，底物越像越靠前），所以取第一条就是相似度最高的
-        same_class = [item for item in similar if item[3]]
-        best = same_class[0][1] if same_class else None
-        # 一条同类的都没有时，才看相关反应里最像的那条
-        related = similar[0][1] if similar and not same_class else None
-        # 找到的是不是全都是没带映射、没法确认的先例（只影响说明文字）
-        only_unverified = bool(similar) and all(row.id in unverified for row, *_ in similar)
-        level, score, basis = self._grade(n_exact, best, model_probability, related, only_unverified)
+        # 先按全部先例（专利也算）定一个等级：产率、借用试剂和条件、M10 的置信度和筛选都按它（level_with_patents）
+        inputs_all = self._grading_inputs(exact_rows, similar, unverified)
+        level_all, _, _ = self._grade(*inputs_all, model_probability)
+        # 证据等级、文献分和说明只看计入文献依据的文献类型（literature_doc_types，现在专利不算）
+        counted = self.literature_doc_types()
+        lit_exact = [row for row in exact_rows if _doc_type(row) in counted]
+        lit_similar = [item for item in similar if _doc_type(item[0]) in counted]
+        n_exact, best, related, only_unverified = self._grading_inputs(lit_exact, lit_similar, unverified)
+        level, score, basis = self._grade(n_exact, best, related, only_unverified, model_probability)
         # 每种文献类型里各有几条同一反应的记录（库里查到的全部，不只是列出来的）
         n_exact_by_type: dict[str, int] = {}
         for row in exact_rows:
@@ -735,6 +758,10 @@ class PrecedentSearch:
             basis = i18n.tr("反应物没有给全（产物多出 {n} 个原子），没法按反应类型找相似先例",
                             "The reactants are incomplete (the product has {n} extra atoms), "
                             "so similar precedents cannot be searched by reaction type", n=unaccounted)
+        # 专利里有更接近的先例，但专利不计入文献依据：说明里点出来，免得用户以为什么都没找到
+        uncounted_note = self._uncounted_note(exact_rows, similar, counted) if level_all != level else None
+        if uncounted_note:
+            basis = i18n.join([basis, uncounted_note], "；", "; ")
         # 等级的名字和星数在 scoring.toml 的 [evidence.levels.E1] 到 [evidence.levels.E4]
         spec = self.config["levels"][level]
         return {
@@ -744,16 +771,27 @@ class PrecedentSearch:
             "stars": spec["stars"],
             "literature_score": round(score, 1),
             "precedents": precedents,
+            # 计入文献依据的同一反应记录有几条（专利里的不算，它们在 n_exact_by_type 里）
             "n_exact": n_exact,
             # 每种文献类型里各有几条同一反应的记录，如 {"journal": 1, "patent": 4}
             "n_exact_by_type": n_exact_by_type,
+            # 把专利也算上时的等级。流水线据此决定要不要借先例的试剂和条件，产率也按它取
+            "level_with_patents": level_all,
+            # 这次计入文献依据的文献类型，如 ["dataset", "journal"]；证据卡据此把其余类型的先例组默认折叠
+            "literature_doc_types": sorted(counted),
+            # 专利里有更接近的先例时补在 basis 后面的那句话（M11 写说明时单独用）；没有是 None
+            "uncounted_note": uncounted_note,
             # 借用试剂和条件文字时用的那条先例的编号（期刊优先，见 _best_ref）；没有先例是 None
             "best_ref": self._best_ref(precedents),
             "best_similarity": 1.0 if n_exact else (round(float(best), 3) if best is not None else None),
+            # 同上，但专利也算（M10 定置信度时和 level_with_patents 一起用）
+            "best_similarity_with_patents": (1.0 if inputs_all[0] else
+                                             (round(float(inputs_all[1]), 3) if inputs_all[1] is not None else None)),
             "compared_by": "center" if by_center else "fingerprint",  # 这一步是按反应中心还是按指纹判断“同类反应”的
             # 同一反应的产率要用库里查到的全部记录来统计，不能只用列在卡上的那几条：
             # 卡上最多列 max_precedents 条，而且是按产率从高到低挑的，只统计它们会把产率报高
-            "yield": self._yield_info(precedents, level, [row.yield_pct for row in exact_rows if row.yield_pct is not None]),
+            "yield": self._yield_info(precedents, level_all,
+                                     [row.yield_pct for row in exact_rows if row.yield_pct is not None]),
             "basis": basis,
         }
 
@@ -1106,13 +1144,64 @@ class PrecedentSearch:
 
     # ------------------------------------------------------------ 定级
 
+    def literature_doc_types(self) -> set[str]:
+        """计入文献依据的文献类型：scoring.toml 的 [evidence] literature_doc_types；没配时是 DEFAULT_LITERATURE_DOC_TYPES。
+
+        谁在用：本类的 find()。
+        """
+        return set(self.config.get("literature_doc_types") or DEFAULT_LITERATURE_DOC_TYPES)
+
+    @staticmethod
+    def _grading_inputs(exact_rows, similar, unverified) -> tuple[int, float | None, float | None, bool]:
+        """从找到的先例里取出定级要用的四个数：(同一反应几条, 同类先例最高的底物相似度, 相关反应最高的相似度, 是否全都没法确认)。
+
+        参数：
+            exact_rows  同一反应的先例行（可以只是其中某几种文献类型的）。
+            similar     相似先例 [(行, 底物相似度, 反应一致程度, 是否同类反应)]，已经按 _rank 排好序。
+            unverified  按指纹补查出来、没带映射的先例的 id。
+        返回：(n_exact, best, related, only_unverified)，含义见 _grade 的参数。
+        谁在用：本类的 find()（全部先例算一次，只算计入文献依据的再算一次）。
+        """
+        # similar 已经排好序（同类在前，底物越像越靠前），所以取第一条就是相似度最高的
+        same_class = [item for item in similar if item[3]]
+        best = same_class[0][1] if same_class else None
+        # 一条同类的都没有时，才看相关反应里最像的那条
+        related = similar[0][1] if similar and not same_class else None
+        # 找到的是不是全都是没带映射、没法确认的先例（只影响说明文字）
+        only_unverified = bool(similar) and all(row.id in unverified for row, *_ in similar)
+        return len(exact_rows), best, related, only_unverified
+
+    @staticmethod
+    def _uncounted_note(exact_rows, similar, counted: set[str]) -> str:
+        """不计入文献依据的先例（专利）比计入的更接近时，补在说明后面的一句话。
+
+        参数：
+            exact_rows  全部同一反应的先例行。
+            similar     全部相似先例，格式同 _grading_inputs。
+            counted     计入文献依据的文献类型。
+        返回：一句话，比如 “专利里有 3 条同一反应，不计入文献依据”。
+        谁在用：本类的 find()。
+        """
+        uncounted_exact = sum(_doc_type(row) not in counted for row in exact_rows)
+        if uncounted_exact:
+            return i18n.tr("专利里有 {n} 条同一反应，不计入文献依据",
+                           "{n} patent records report the same reaction; patents do not count as literature evidence",
+                           n=uncounted_exact)
+        best = max((s for row, s, _, same in similar if same and _doc_type(row) not in counted), default=None)
+        if best is not None:
+            return i18n.tr("专利里有同类反应的先例（底物相似度最高 {best:.2f}），不计入文献依据",
+                           "Patents hold precedents of the same reaction type (highest substrate similarity {best:.2f}); "
+                           "patents do not count as literature evidence", best=best)
+        return i18n.tr("专利里有相关反应的先例，不计入文献依据",
+                       "Patents hold related precedents; patents do not count as literature evidence")
+
     def _grade(
         self,
         n_exact: int,
         best: float | None,
-        model_probability: float | None,
         related: float | None = None,
         unverified: bool = False,
+        model_probability: float | None = None,
     ) -> tuple[str, float, str]:
         """根据找到了什么样的先例，定证据等级和文献分。
 
@@ -1122,9 +1211,9 @@ class PrecedentSearch:
         参数：
             n_exact            “同一反应”的先例有几条。
             best               见上；没有同类先例是 None。
-            model_probability  逆合成模型给这一步的概率（0–1），没有是 None。只在 E4 时用。
             related            见上；有同类先例、或者什么都没找到时是 None。
             unverified         见上。只影响说明文字，不影响等级和分数。
+            model_probability  逆合成模型给这一步的概率（0–1），没有是 None。只在 E4 时用。
         返回：
             (等级, 文献分, 说明文字)。文献分这里不取整，find() 再保留一位小数。
         规则（从上往下，先满足哪条就用哪条；分数段是 scoring.toml 里 [evidence.levels.*] 的 band，括号里是现在的值）：

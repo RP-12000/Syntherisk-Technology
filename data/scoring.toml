@@ -95,6 +95,9 @@ high_similarity_threshold = 0.70  # E2：底物高度相似（PPT 建议值 0.7�
 low_similarity_threshold = 0.20   # E3 的下限：同类反应但底物相似度比这还低，就不当作可参考的先例
 no_precedent_score = 15           # E4 且没有任何模型依据时的文献分
 max_precedents = 8                # 证据卡里最多列几条先例
+# 计入“文献依据”（证据等级、文献分）的文献类型。专利不算：专利照样列在证据卡上（默认折叠），
+# 照样用来借试剂、条件和产率，只是不决定证据等级。想让专利重新计入，加上 "patent"
+literature_doc_types = ["journal", "dataset"]
 
 [evidence.levels.E1]
 label = "文献直接报道"

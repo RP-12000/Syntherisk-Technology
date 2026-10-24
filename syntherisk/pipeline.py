@@ -719,6 +719,14 @@ class AnalysisRunner:
                 total=total, steps=_plural(total, "step"), e1=levels.count("E1"), e2=levels.count("E2"),
                 e3=levels.count("E3"), e4=levels.count("E4"),
             )
+            # 上面的等级不算专利。专利里有更接近的先例的步骤（M5 写了 uncounted_note）单独数一下，接在后面
+            closer_in_patents = sum(1 for r in reactions.values() if r["evidence"].get("uncounted_note"))
+            if closer_in_patents:
+                message = i18n.join([message, i18n.tr(
+                    "专利不计入，其中 {n} 步在专利里有更接近的先例",
+                    "patents are not counted; {n} {steps} {verb} closer precedents in patents",
+                    n=closer_in_patents, steps=_plural(closer_in_patents, "step"),
+                    verb=_plural(closer_in_patents, "has", "have"))], "；", "; ")
         self._set_stage(4, "done", message)
         self._save_result()
 
@@ -741,8 +749,11 @@ class AnalysisRunner:
             本类的 _precedents()。
         """
         evidence = reaction["evidence"]
-        # 三种情况不借：已经有试剂了；等级不够（E3、E4，或者没评估）；没有先例
-        if reaction["reagents"] or evidence.get("level") not in ("E1", "E2") or not evidence["precedents"]:
+        # 三种情况不借：已经有试剂了；等级不够（E3、E4，或者没评估）；没有先例。
+        # 这里看的是把专利也算上的等级（level_with_patents）：专利不计入文献依据，但它的试剂照样能借。
+        # 旧的分析结果里没有这一项，用 level
+        level = evidence.get("level_with_patents", evidence.get("level"))
+        if reaction["reagents"] or level not in ("E1", "E2") or not evidence["precedents"]:
             return
         # “最好的先例”由 M5 挑好（期刊论文优先，见 m05_precedents.PrecedentSearch._best_ref）
         best = best_precedent(evidence)
@@ -879,9 +890,9 @@ class AnalysisRunner:
             reagents = [molecules[k]["smiles"] for k in reaction["reagents"]]
             product = molecules[reaction["product"]]["smiles"]
             precedents = reaction["evidence"]["precedents"]
-            # “最好的先例”只在证据等级是 E1 / E2 时才采信（和借用试剂是同一个标准）；否则当作没有
-            best = (best_precedent(reaction["evidence"])
-                    if precedents and reaction["evidence"].get("level") in ("E1", "E2") else None)
+            # “最好的先例”只在证据等级是 E1 / E2 时才采信（和借用试剂是同一个标准，专利也算）；否则当作没有
+            level = reaction["evidence"].get("level_with_patents", reaction["evidence"].get("level"))
+            best = best_precedent(reaction["evidence"]) if precedents and level in ("E1", "E2") else None
 
             # 条件说明文字从哪来，按先后顺序：
             #   1. 演示路线自带的（教科书层面的概述），出处记 "DEMO"

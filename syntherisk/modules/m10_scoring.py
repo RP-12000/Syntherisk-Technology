@@ -151,7 +151,7 @@ LEVELS_NOT_ASSESSED = i18n.tr(
     "先例库还没有导入数据，证据等级未评估",
     "The precedent library has no data yet, so evidence levels were not assessed",
 )
-ALL_STEPS_SUPPORTED = i18n.tr("每一步都有文献依据", "Every step has literature support")
+ALL_STEPS_SUPPORTED = i18n.tr("每一步都有先例", "Every step has a precedent")
 NO_SPECIAL_OPERATIONS = i18n.tr("无", "None")
 
 
@@ -501,7 +501,7 @@ def _soft_hits(result: dict[str, Any], reaction: dict[str, Any], effective: Effe
 
 
 def step_confidence(reaction: dict[str, Any], scoring: dict[str, Any]) -> str:
-    """一步的置信度，只看证据等级。返回 "high"、"medium" 或 "low"。
+    """一步的置信度，只看把专利也算上的证据等级（level_with_patents）。返回 "high"、"medium" 或 "low"。
 
         E1（文献直接报道）                              high
         E2（高相似先例），最高相似度 ≥ 0.85              high；不到 0.85 是 medium
@@ -510,7 +510,8 @@ def step_confidence(reaction: dict[str, Any], scoring: dict[str, Any]) -> str:
     0.85 是 data/scoring.toml [confidence] 的 e2_high_similarity。
 
     参数：
-        reaction  一步反应；读它的 evidence["level"] 和 evidence["best_similarity"]。
+        reaction  一步反应；读它的 evidence["level_with_patents"] 和 evidence["best_similarity_with_patents"]
+                  （2026-10-24 以前的结果没有这两项，读 level 和 best_similarity，那时它们本来就算了专利）。
         scoring   reference.scoring。
     注意：
         evaluate_route() 里，依据太少（thin）的步骤不管证据等级，直接算 low，不调这个函数。
@@ -518,13 +519,16 @@ def step_confidence(reaction: dict[str, Any], scoring: dict[str, Any]) -> str:
         本文件的 evaluate_route()。
     """
     evidence = reaction.get("evidence") or {}
-    level = evidence.get("level")
+    # 置信度看把专利也算上的等级：专利不计入证据等级和文献分，但专利里报道过的反应照样说明这一步做得成。
+    # 2026-10-24 以前的结果没有这两项，那时的 level、best_similarity 本来就算了专利
+    level = evidence.get("level_with_patents", evidence.get("level"))
     if level == "E1":
         return "high"
     if level == "E2":
-        # best_similarity：同类反应的先例里，底物（产物结构）最像的那一条的相似度（0–1）
+        # 同类反应的先例里，底物（产物结构）最像的那一条的相似度（0–1）
         threshold = float(scoring["confidence"]["e2_high_similarity"])
-        return "high" if (evidence.get("best_similarity") or 0) >= threshold else "medium"
+        similarity = evidence.get("best_similarity_with_patents", evidence.get("best_similarity"))
+        return "high" if (similarity or 0) >= threshold else "medium"
     if level == "E4":
         return "low"
     return "medium"  # E3，或者先例库没导入、等级未评估
@@ -534,7 +538,8 @@ def _route_confidence(steps: list[dict[str, Any]], scoring: dict[str, Any]) -> t
     """整条路线的置信度和一句理由。
 
     参数：
-        steps    evaluate_route() 里拼好的步骤列表；这里只读每一步的 index、confidence、evidence_level、thin。
+        steps    evaluate_route() 里拼好的步骤列表；这里只读每一步的 index、confidence、evidence_level、
+                 precedent_level（把专利也算上的等级，没有时用 evidence_level）、thin。
         scoring  reference.scoring；用 [confidence]。
     返回：
         (置信度, 理由)。置信度是 "high"、"medium" 或 "low"；理由是给人看的一句话。
@@ -542,11 +547,13 @@ def _route_confidence(steps: list[dict[str, Any]], scoring: dict[str, Any]) -> t
         1. 有低置信度的步骤：
                低置信步骤 ≥ 2 个（low_steps_for_low），或者占比 > 0.34（low_fraction_for_low）  → low
                否则                                                                         → medium
-           理由写明是哪几步、为什么：“第 2 步无文献先例”（E4），“第 1 步多数评分项没有数据”（thin）。
+           理由写明是哪几步、为什么：“第 2 步没有先例”（专利也算上仍是 E4），“第 1 步多数评分项没有数据”（thin）。
         2. 所有步骤的证据等级都是 None（先例库没导入）                                        → medium
         3. 中置信步骤 ≥ 2 个（medium_steps_for_medium），或者占比 > 0.34（medium_fraction_for_medium）
                                                            → medium，理由“第 N 步只有相似先例”
-        4. 其余                                             → high，理由“每一步都有文献依据”
+        4. 其余                                             → high，理由“每一步都有先例”
+    置信度里的“先例”专利也算：专利不计入证据等级和文献分（m05_precedents 的 literature_doc_types），
+    但专利里报道过的反应照样说明这一步做得成。
     占比的门槛是给短路线用的：三步里有一步（0.333）不超过 0.34，两步里有一步（0.5）就超过了。
     谁在用：
         本文件的 evaluate_route()；tests/test_scoring.py 直接测了几种组合。
@@ -560,11 +567,12 @@ def _route_confidence(steps: list[dict[str, Any]], scoring: dict[str, Any]) -> t
     low = [s for s in steps if s["confidence"] == "low"]
     medium = [s for s in steps if s["confidence"] == "medium"]
     if low:
-        # 低置信度有两种来历，理由分开写：没有文献先例（E4），或者依据太少（thin）。同一步可能两种都占
-        no_precedent = [s for s in low if s["evidence_level"] == "E4"]
+        # 低置信度有两种来历，理由分开写：期刊、专利里都没有先例（E4），或者依据太少（thin）。同一步可能两种都占。
+        # precedent_level 是把专利也算上的等级；手工拼的步骤（测试）没有这一项时用 evidence_level
+        no_precedent = [s for s in low if s.get("precedent_level", s["evidence_level"]) == "E4"]
         thin = [s for s in low if s["thin"]]
         # 英文句子分单复数（Step 2 has / Steps 1, 3 have）；word、verb 两个参数只有英文模板用
-        reasons = [i18n.tr("第 {numbers} 步无文献先例", "{word} {numbers} {verb} no literature precedent",
+        reasons = [i18n.tr("第 {numbers} 步没有先例", "{word} {numbers} {verb} no precedent",
                            numbers=numbers(no_precedent), word=_plural(len(no_precedent), "Step"),
                            verb=_plural(len(no_precedent), "has", "have"))] if no_precedent else []
         reasons += [i18n.tr("第 {numbers} 步多数评分项没有数据", "{word} {numbers} {verb} no data for most scoring dimensions",
@@ -779,7 +787,8 @@ def evaluate_route(
         coverage         有数据的维度占了多少权重（0–1，两位小数）
         thin             coverage 低于 [confidence] 的 min_assessed_weight 时为 True
         confidence       这一步的置信度；thin 的步骤固定是 "low"
-        evidence_level   E1–E4；没评估是 None
+        evidence_level   E1–E4（只算期刊，专利不计入）；没评估是 None
+        precedent_level  把专利也算上的等级；置信度和筛选用它
         stars            证据星级 0–3；没评估是 None
         operation_label  操作标签，例如“操作 中等 · 需无水”
         materials        要准备的物料，见 step_materials()
@@ -828,6 +837,8 @@ def evaluate_route(
                 "thin": thin,
                 "confidence": "low" if thin else step_confidence(reaction, scoring),
                 "evidence_level": evidence.get("level"),
+                # 把专利也算上的等级：置信度和“没有先例”“最低证据等级”两条筛选看它。旧结果没有这一项，用 level
+                "precedent_level": evidence.get("level_with_patents", evidence.get("level")),
                 "stars": evidence.get("stars"),
                 "operation_label": (reaction.get("conditions") or {}).get("operation_label"),
                 "materials": materials,
@@ -892,8 +903,8 @@ def exclusion_reasons(
             substance   物质名（安全类的原因才有）
     constraint 编号和检查的内容（按代码里的先后）：
         max_steps               步数超过上限（A7 档位的上限；A13 填了步数就用 A13 的；A14 的要求只会让它更小）
-        precedent               没有文献先例（E4）的步数，超过档位允许的数量（A13 可以改）。先例库没导入时不检查
-        evidence                有步骤的证据等级低于要求的最低等级（A13 / A14）。先例库没导入时不检查
+        precedent               没有先例（把专利也算上仍是 E4）的步数，超过档位允许的数量（A13 可以改）。先例库没导入时不检查
+        evidence                有步骤的证据等级（把专利也算上）低于要求的最低等级（A13 / A14）。先例库没导入时不检查
         condition:<条件编号>     某一步的操作标签属于“做不了的条件”（A10，或 A14 里的硬性要求）
         purification:<纯化方式>  某一步要用被排除的纯化方式（A14 里的硬性要求）
         safety:acute_toxic      某一步用到剧毒物质（急性毒性 1–2 类）
@@ -934,15 +945,17 @@ def exclusion_reasons(
                                  "{count} steps in total, over the {limit}-step limit of the “{level}” setting",
                                  count=len(steps), level=effective.complexity_label, limit=effective.max_steps))
 
-    # ---- 证据等级。只有每一步都评过等级才检查：先例库没导入时等级是 None，不能当成“没有先例”
-    levels = [(index, (reaction.get("evidence") or {}).get("level")) for index, reaction in steps]
+    # ---- 证据等级。只有每一步都评过等级才检查：先例库没导入时等级是 None，不能当成“没有先例”。
+    # 这两条筛选看把专利也算上的等级（专利不计入证据等级和文献分，但专利里报道过就算有先例）；旧结果没有这一项，用 level
+    levels = [(index, (reaction.get("evidence") or {}).get("level_with_patents", (reaction.get("evidence") or {}).get("level")))
+              for index, reaction in steps]
     if all(level is not None for _, level in levels):
         # 没有先例（E4）的步骤太多
         without = [index for index, level in levels if level == "E4"]
         if len(without) > effective.max_steps_without_precedent:
             numbers = i18n.join([str(i) for i in without])
-            add("precedent", i18n.tr("第 {numbers} 步没有文献先例，“{level}”档最多允许 {limit} 步",
-                                     "{word} {numbers} {verb} no literature precedent; the “{level}” setting allows at most {limit}",
+            add("precedent", i18n.tr("第 {numbers} 步没有先例，“{level}”档最多允许 {limit} 步",
+                                     "{word} {numbers} {verb} no precedent; the “{level}” setting allows at most {limit}",
                                      numbers=numbers, level=effective.complexity_label,
                                      limit=effective.max_steps_without_precedent,
                                      word=_plural(len(without), "Step"), verb=_plural(len(without), "has", "have")))
@@ -952,8 +965,8 @@ def exclusion_reasons(
             weak = [index for index, level in levels if EVIDENCE_ORDER.index(level) > limit]
             if weak:
                 numbers = i18n.join([str(i) for i in weak])
-                add("evidence", i18n.tr("第 {numbers} 步的证据等级低于 {level}",
-                                        "{word} {numbers} {verb} an evidence level below {level}",
+                add("evidence", i18n.tr("第 {numbers} 步算上专利的证据等级也低于 {level}",
+                                        "{word} {numbers} {verb} an evidence level below {level}, even counting patents",
                                         numbers=numbers, level=effective.min_evidence_level,
                                         word=_plural(len(weak), "Step"), verb=_plural(len(weak), "has", "have")))
 

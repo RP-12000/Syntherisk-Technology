@@ -60,7 +60,7 @@
 
 | 按钮 | 做什么 | 接口 | 模块 | 回到界面 |
 |---|---|---|---|---|
-| C1 文献列表 | 相似度、产率、原文链接；期刊论文和专利分开检索，期刊在前，`?doc_type=journal` / `patent` 只取一种 | `GET …/steps/{n}/precedents` | M5 | R6 |
+| C1 文献列表 | 相似度、产率、原文链接；期刊论文和专利分开检索，期刊在前，专利那一组默认折叠（不计入证据等级），`?doc_type=journal` / `patent` 只取一种 | `GET …/steps/{n}/precedents` | M5 | R6 |
 | C2 相似先例 | 同上，带结构差异 | `GET …/steps/{n}/precedents`、`POST /structures/diff` | M5 + M1 | R6 |
 | C3 替代分支 | 证据卡的 `alternatives` 字段；跳回分叉点 | — | — | — |
 | C4 原料标签 | 库存、在售、价格（第一版“待询价”） | `GET /materials/availability?smiles=` | M4 | R6 浮层 |
@@ -174,6 +174,10 @@ event: end
 用到的物质都查不到危害数据时的安全、不知道试剂和条件时的操作复杂度（`operation_label` 是“操作 未评估”）。
 
 排序：按路线分从高到低；除“探索”档外，低置信度路线不排在高置信度路线前面。
+
+专利不计入证据等级（2026-10-24 起）：证据等级、星数、文献依据这一维的分数只算期刊论文（`data/scoring.toml` 的 `literature_doc_types`）。
+置信度、“最多几步没有先例”和“最低证据等级”两条筛选看把专利也算上的等级：证据卡里的 `evidence.level_with_patents`，
+路线卡片每一步的 `precedent_level`。专利照样列在先例里，证据卡的 `precedent_groups` 里专利那一组 `collapsed` 为 `true`。
 
 ## 证据卡里和“同类反应”有关的字段
 

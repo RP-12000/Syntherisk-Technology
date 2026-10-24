@@ -99,8 +99,8 @@ class AdvancedParameters(BaseModel):
     都可以不填。
 
     - `max_steps`：路线最多几步（1–15）。不填时用复杂度档位自带的上限（各档是多少见 `GET /api/meta/options`）
-    - `min_evidence_level`：每一步的证据等级不能低于它，取 `E1`、`E2` 或 `E3`。先例库没有数据时不起作用
-    - `max_steps_without_precedent`：最多允许几步没有文献先例（证据等级 E4）。不填时用档位自带的值
+    - `min_evidence_level`：每一步的证据等级（把专利也算上）不能低于它，取 `E1`、`E2` 或 `E3`。先例库没有数据时不起作用
+    - `max_steps_without_precedent`：最多允许几步没有先例（把专利也算上，证据等级仍是 E4）。不填时用档位自带的值
     - `avoid_purifications`：尽量避免的纯化方式（软偏好，只扣分），编号见 `GET /api/meta/options` 的 `purifications`
     - `excluded_reagent_classes`：排除的试剂类别（硬约束），编号见 `GET /api/meta/options` 的 `reagent_classes`
     - `excluded_substances`：排除的具体物质（硬约束），每项是一个 SMILES
@@ -184,7 +184,7 @@ class Constraints(BaseModel):
     """新建分析第 2 步“约束与偏好”整页的内容，随开始分析（A16）一起提交。每一项都有默认值，可以只传要改的。
 
     - `complexity`（A7 复杂度）：`concise` 简洁、`balanced` 平衡（默认）、`explore` 探索。
-      决定步数上限、允许几步没有文献先例，以及低置信度的路线能不能排到前面
+      决定步数上限、允许几步没有先例（专利也算），以及低置信度的路线能不能排到前面
     - `stock_source`（A8 原料来源）：`inventory_only` 仅用库存、`inventory_first` 库存优先 + 可购买（默认）、`any` 不限来源
     - `unavailable_conditions`（A10 做不了的条件）：`pressurized_gas`、`anhydrous_anaerobic`、`glovebox`、
       `cryogenic`、`photo_electro` 里的若干个。需要这些条件的路线被排除
@@ -231,7 +231,7 @@ class EffectiveConstraints:
     scale: str
     # 路线最多几步。先取高级参数里填的，没填用档位自带的；一句话要求里有步数上限时再取较小的那个
     max_steps: int
-    # 最多允许几步没有文献先例（证据等级 E4）。高级参数里填了就用填的，否则用档位自带的
+    # 最多允许几步没有先例（把专利也算上仍是 E4）。高级参数里填了就用填的，否则用档位自带的
     max_steps_without_precedent: int
     # 每一步的证据等级不能低于它（E1 / E2 / E3）；None 表示不限
     min_evidence_level: str | None

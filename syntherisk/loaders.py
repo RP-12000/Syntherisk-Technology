@@ -42,6 +42,7 @@
     load_precedents    导入反应先例
     _catalog_keys      逐行读在售目录文件
     load_catalog       导入在售目录
+    fill_literature_metadata  给有 DOI 的先例补年份和题目（联网查 Crossref / OpenAlex）
     summarize          统计库里现在有多少数据
 """
 
@@ -49,14 +50,16 @@ from __future__ import annotations
 
 import csv
 import itertools
+import re
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, or_, select, update
 
 from syntherisk import models
 from syntherisk.context import AppContext
+from syntherisk.external import ExternalServiceError, LiteratureClient
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m05_precedents import mark_library_changed, parse_yield, precedent_values
 
@@ -486,6 +489,71 @@ def load_catalog(
 
 
 # ---------------------------------------------------------------- 统计
+
+
+def fill_literature_metadata(
+    ctx: AppContext,
+    client: LiteratureClient,
+    *,
+    source: str | None = None,
+    limit: int | None = None,
+    progress: Progress = print,
+) -> dict[str, Any]:
+    """给有 DOI、还缺年份或题目的先例补上年份和题目：按 DOI 去 Crossref 查，查不到再问 OpenAlex。
+
+    期刊数据（比如 academic13k）只有 DOI 和反应式，证据卡上显示不出论文的年份；补上以后，
+    新做的分析里每条期刊先例都带着年份和题目。同一个 DOI 只查一次，查到的写进这个 DOI 的全部先例行，
+    只填空着的列，不覆盖已有的。
+    参数：
+        ctx       运行时上下文（数据库会话）。
+        client    文献信息的客户端（external.LiteratureClient）；命令行建一个真的，测试传假传输层的。
+        source    只补这个来源的先例，比如 "academic13k"；None 表示不限来源。
+        limit     最多查多少个 DOI（试跑用）；None 表示全部。
+        progress  进度回调，每 50 个 DOI 报一次。
+    返回：
+        {"dois": 要查的 DOI 个数, "found": 查到的, "missing": 两边都没有的, "updated_rows": 改了几行,
+         "stopped_at": 中途停下时停在哪个 DOI（否则 None）, "error": 停下的原因（否则 None）}
+    副作用：
+        联网（每次请求至少隔 0.2 秒）；写 reaction_precedents 的 year、title 两列，每 50 个 DOI 提交一次。
+        年份和题目不影响内存里的先例索引，不用换版本号。
+    中途停下：
+        接口连不上或者被限流时停下，已经提交的留在库里。再运行一次就从没补的接着查（已补的不会再被选中）。
+        查不到的 DOI 不会写任何东西，所以重跑时会再问一次。
+    谁在用：
+        cli.py 的 cmd_fill_literature（命令行 fill-literature）；tests/test_integrations.py。
+    """
+    precedent = models.ReactionPrecedent
+    query = (select(precedent.doi).where(precedent.doi.is_not(None), or_(precedent.year.is_(None), precedent.title.is_(None)))
+             .distinct().order_by(precedent.doi))
+    if source:
+        query = query.where(precedent.source == source)
+    stats: dict[str, Any] = {"dois": 0, "found": 0, "missing": 0, "updated_rows": 0, "stopped_at": None, "error": None}
+    with ctx.session_factory() as session:
+        dois = [doi for doi in session.scalars(query.limit(limit) if limit else query)]
+        stats["dois"] = len(dois)
+        for done, doi in enumerate(dois, 1):
+            try:
+                info = client.by_doi(doi)
+            except ExternalServiceError as exc:
+                stats["stopped_at"], stats["error"] = doi, str(exc)
+                break
+            if not info:
+                stats["missing"] += 1
+            else:
+                stats["found"] += 1
+                # Crossref 的题目里常带排版标记（<i>E</i>、<sub>2</sub>），存之前去掉
+                title = re.sub(r"<[^>]+>", "", info.get("title") or "").strip() or None
+                # 只填空着的列：year 是空的才写年份，title 是空的才写题目
+                for column, value in ((precedent.year, info.get("year")), (precedent.title, title)):
+                    if value:
+                        result = session.execute(
+                            update(precedent).where(precedent.doi == doi, column.is_(None)).values({column.key: value}))
+                        stats["updated_rows"] += result.rowcount or 0
+            if done % 50 == 0:
+                session.commit()
+                progress(f"已查 {done:,} / {len(dois):,} 个 DOI，查到 {stats['found']:,} 个")
+        session.commit()
+    return stats
 
 
 def summarize(ctx: AppContext) -> dict[str, Any]:

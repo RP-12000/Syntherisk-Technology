@@ -227,7 +227,7 @@ def _evidence_text(route: dict[str, Any]) -> str:
         三种之一：
             "证据等级未评估"  有步骤的证据等级是 None（先例库还没有导入数据时就是这样）
             "每步都有文献"    没有一步是 E4
-            "N 步没有先例"    有 N 步是 E4（E4 = 仅模型预测，找不到可参考的先例）
+            "N 步没有文献先例"  有 N 步是 E4（证据等级只算期刊；这几步专利里可能有先例，路线的置信度会算上专利）
     谁在用：
         本文件的 route_card。
     """
@@ -239,8 +239,8 @@ def _evidence_text(route: dict[str, Any]) -> str:
     if not without:
         return i18n.tr("每步都有文献", "Every step has a literature precedent")
     # 英文要分单复数（1 step / 2 steps），所以按步数挑英文模板；中文还是原来那一句
-    return i18n.tr("{n} 步没有先例", "{n} step without precedent" if without == 1 else "{n} steps without precedent",
-                   n=without)
+    return i18n.tr("{n} 步没有文献先例", "{n} step without literature precedent" if without == 1
+                   else "{n} steps without literature precedent", n=without)
 
 
 def route_card(route: dict[str, Any]) -> dict[str, Any]:
@@ -275,7 +275,8 @@ def route_card(route: dict[str, Any]) -> dict[str, Any]:
             relaxed             是否靠放宽条件才进入可选列表（B6，界面上标“放宽后”）
             step_keys           按实验顺序排的步骤编号
             steps               每一步的简要信息。每项有 index、key、name、score、coverage、thin、dimensions、
-                                soft_penalty、confidence、evidence_level、stars、operation_label、experiment
+                                soft_penalty、confidence、evidence_level、precedent_level（把专利也算上的等级，
+                                置信度看它）、stars、operation_label、experiment
     谁在用：
         本文件的 result_view、route_view。
     """
@@ -311,7 +312,8 @@ def route_card(route: dict[str, Any]) -> dict[str, Any]:
             # 每一步只挑出列表页用得到的字段（materials、soft_hits 等留给证据卡）；
             # step.get(k) 在字段不存在时给 None，不报错
             {k: step.get(k) for k in ("index", "key", "name", "score", "coverage", "thin", "dimensions", "soft_penalty",
-                                      "confidence", "evidence_level", "stars", "operation_label", "experiment")}
+                                      "confidence", "evidence_level", "precedent_level", "stars", "operation_label",
+                                      "experiment")}
             for step in route["steps"]
         ],
     }

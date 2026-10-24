@@ -353,7 +353,8 @@ class Explainer:
         返回：
             句子列表 [{"text", "sources"}]，最多 6 句，按下面的顺序：
             1. 这一步是什么反应、由什么得到什么                              出处 ROUTE
-            2. 文献依据，按证据等级有四种说法                                出处是先例编号；没有先例时是 SCORE 或 MODEL
+            2. 文献依据，按证据等级有四种说法；专利里有先例、但专利不计入时   出处是先例编号；没有先例时是 SCORE 或 MODEL
+               也说出来（证据卡的 uncounted_note）
             3. 操作上需要什么（扣分最多的那个操作标签）；没有标签就没有这一句   出处 RULE:<规则编号>
             4. 安全方面要注意哪个物质（危害最重的那个）；没有就没有这一句       出处 GHS
             5. 操作或安全没有评估时，如实说出来                              出处 SCORE
@@ -375,6 +376,11 @@ class Explainer:
         # 第 2 句：文献依据。refs 是这张卡上列出的全部先例的编号（P1、P2……）
         evidence, yield_info = card["evidence"], card["yield"]
         refs = [p["ref"] for p in card["precedents"]]
+        # 专利不计入文献依据（m05_precedents.py 的 literature_doc_types）。不计入的那几组里有几条同一反应；
+        # note 是专利里有更接近的先例时 M5 写的那句话。旧的卡片没有这两样，按 0 和 None 算
+        uncounted_exact = sum(group["n_exact"] for group in card.get("precedent_groups") or []
+                              if not group.get("counts_for_literature", True))
+        note = evidence.get("uncounted_note")
         if evidence["level"] is None:
             # 等级是 None：先例库还没有导入，没有评估
             sentences.append({"text": i18n.tr("先例库还没有导入数据，这一步的文献依据暂时没有评估",
@@ -386,19 +392,36 @@ class Explainer:
             exact = [p["ref"] for p in card["precedents"] if p["exact"]]
             # 英文要分单复数（1 precedent reports / 3 precedents report），所以按个数选英文模板
             n_exact = evidence["n_exact"]
+            found_zh = "先例库里有 {n} 个先例报道了同一个反应"
             found = ("{n} precedent in the library reports this exact reaction" if n_exact == 1
                      else "{n} precedents in the library report this exact reaction")
+            if uncounted_exact:
+                # 专利里也有同一反应：分开说。产率统计把专利也算上了，所以产率那半句里的条数可能比 n 多
+                found_zh = "先例库里有 {n} 个文献先例报道了同一个反应，专利里另有 {m} 条（专利不计入文献依据）"
+                found = (("{n} literature precedent reports this exact reaction" if n_exact == 1
+                          else "{n} literature precedents report this exact reaction")
+                         + ", and {m} patent records do too (patents do not count as literature evidence)")
             if yield_info.get("source") == "literature":
-                text = i18n.tr("先例库里有 {n} 个先例报道了同一个反应，{yield_label}", found + ". {yield_label}",
-                               n=n_exact, yield_label=yield_info["label"])
+                text = i18n.tr(found_zh + "，{yield_label}", found + ". {yield_label}",
+                               n=n_exact, m=uncounted_exact, yield_label=yield_info["label"])
             else:
-                text = i18n.tr("先例库里有 {n} 个先例报道了同一个反应", found, n=n_exact)
+                text = i18n.tr(found_zh, found, n=n_exact, m=uncounted_exact)
             sentences.append({"text": text, "sources": exact or refs})
         elif evidence["level"] in ("E2", "E3"):
-            # E2 / E3：只有相似先例。直接引用 M5 写好的依据（evidence["basis"]），出处最多写三条先例
-            text = i18n.tr("没有找到同一个反应的报道，{basis}", "No report of this exact reaction was found. {basis}",
-                           basis=evidence["basis"])
+            # E2 / E3：只有相似先例。直接引用 M5 写好的依据（evidence["basis"]），出处最多写三条先例。
+            # 专利里有同一反应时，依据的后半句会提到它，所以前半句只说文献里没有
+            if uncounted_exact:
+                text = i18n.tr("文献里没有同一个反应的报道，{basis}",
+                               "No literature report of this exact reaction was found. {basis}", basis=evidence["basis"])
+            else:
+                text = i18n.tr("没有找到同一个反应的报道，{basis}", "No report of this exact reaction was found. {basis}",
+                               basis=evidence["basis"])
             sentences.append({"text": text, "sources": refs[:3]})
+        elif note:
+            # E4，但专利里有先例（专利不计入文献依据）：如实说出来，出处写列出来的专利
+            sentences.append({"text": i18n.tr("文献里没有找到可参考的先例；{note}",
+                                              "No usable precedent was found in the literature; {note}", note=note),
+                              "sources": refs[:3]})
         else:
             # E4：没有可参考的先例。卡上有逆合成模型的依据时出处写 MODEL，否则写 SCORE
             sentences.append({"text": i18n.tr("先例库里没有找到可参考的先例，这一步只有模型依据",

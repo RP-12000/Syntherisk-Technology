@@ -5,6 +5,7 @@
     python -m syntherisk.cli load-precedents --source uspto --file …   导入反应先例（M5）
     python -m syntherisk.cli load-catalog --source zinc --file …       导入在售目录（M4）
     python -m syntherisk.cli check-hazards                            把内置试剂表的危害分类和 PubChem 对一遍（M6）
+    python -m syntherisk.cli fill-literature --source academic13k      按 DOI 给期刊先例补年份和题目（M5）
     python -m syntherisk.cli calibrate                               用已授权的实验回填做一次校准统计（M14）
     python -m syntherisk.cli export-consented --output data.json      导出已授权的匿名回填数据（给产率模型用）
 
@@ -20,6 +21,7 @@
                       带 --replace 时先删掉这个来源原有的数据
     load-catalog      M4：读文件，写 catalog_compounds
     check-hazards     M6：联网查 PubChem，和 data/compounds.csv 比对。只打印差异，不改任何文件和数据库
+    fill-literature   M5：联网查 Crossref / OpenAlex，给有 DOI 的先例补年份和题目，写 reaction_precedents
     calibrate         M14：读已授权的 experiment_records，写一行 calibration_runs，打印统计
     export-consented  M14：读已授权的 experiment_records，写一个 JSON 文件（--output 指定的路径）
 
@@ -33,8 +35,8 @@
     DEMO_INVENTORY       seed-demo 放进演示库存的 8 种试剂
     _print()             不会因为终端编码而报错的打印函数
     cmd_status()、cmd_seed_demo()、cmd_load_precedents()、cmd_load_catalog()、cmd_calibrate()、
-    cmd_export_consented()、cmd_check_hazards()
-                         七条命令各一个函数，参数都是 (ctx, args)
+    cmd_export_consented()、cmd_check_hazards()、cmd_fill_literature()
+                         八条命令各一个函数，参数都是 (ctx, args)
     main()               解析命令行参数，调对应的 cmd_ 函数
 """
 
@@ -194,6 +196,28 @@ def cmd_load_catalog(ctx: AppContext, args) -> None:
     _print(f"完成：读了 {stats['read']:,} 行，新增 {stats['loaded']:,} 个，已有 {stats['existing']:,} 个。")
 
 
+def cmd_fill_literature(ctx: AppContext, args, client=None) -> None:
+    """fill-literature 命令：按 DOI 去 Crossref / OpenAlex 查，给期刊先例补上年份和题目（M5）。
+
+    命令行选项：
+        --source  只补这个来源的先例，比如 academic13k；不写就是全部有 DOI 的先例
+        --limit   最多查多少个 DOI（试跑用）
+    真正的工作在 loaders.fill_literature_metadata() 里。中途被限流或断网会停下，再运行一次就接着查。
+    参数：
+        client  文献信息的客户端；命令行运行时不传，这里按配置里的 CONTACT_EMAIL 建一个；测试传假的。
+    打印：
+        进度，以及最后查了多少个 DOI、查到多少个、改了多少行；中途停下时说明停在哪、为什么。
+    """
+    from syntherisk.external import LiteratureClient
+
+    client = client or LiteratureClient(ctx.settings.contact_email, timeout=20)
+    stats = loaders.fill_literature_metadata(ctx, client, source=args.source, limit=args.limit, progress=_print)
+    _print(f"完成：查了 {stats['dois']:,} 个 DOI，查到 {stats['found']:,} 个，"
+           f"两边都没有 {stats['missing']:,} 个，改了 {stats['updated_rows']:,} 行。")
+    if stats["stopped_at"]:
+        _print(f"在 {stats['stopped_at']} 停下了（{stats['error']}）。过一阵再运行同一条命令，会从没补的接着查。")
+
+
 def cmd_calibrate(ctx: AppContext, _args) -> None:
     """calibrate 命令：用已授权的实验回填记录做一次校准统计（M14），结果存库并打印出来。
 
@@ -345,6 +369,11 @@ def main(argv: list[str] | None = None) -> None:
     catalog.add_argument("--source", required=True, help="比如 zinc")
     catalog.add_argument("--file", required=True)
     catalog.set_defaults(run=cmd_load_catalog)
+
+    literature = commands.add_parser("fill-literature", help="按 DOI 给先例补年份和题目（联网查 Crossref / OpenAlex）")
+    literature.add_argument("--source", default=None, help="只补这个来源的先例，比如 academic13k")
+    literature.add_argument("--limit", type=int, default=None, help="最多查多少个 DOI，试跑时用")
+    literature.set_defaults(run=cmd_fill_literature)
 
     hazards = commands.add_parser("check-hazards", help="把内置试剂表的危害分类和 PubChem 对一遍（联网，全表约十五分钟）")
     hazards.add_argument("--only", default=None, help="只查这几个，用逗号分开，写 compounds.csv 里的 key")

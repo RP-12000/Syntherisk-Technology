@@ -345,6 +345,8 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
       - 先例按文献类型分组：期刊论文那一组在前，专利在后（m05_precedents.py 的 DOC_TYPE_ORDER）；
         组内同一反应的先例排在前面，exact 为 true，相似度是 1.0，不带 structure_diff；
       - 返回里的 groups 按组列出各自的编号；带 doc_type 参数时只返回那一种文献；
+      - 专利不计入证据等级（data/scoring.toml 的 literature_doc_types）：专利那一组标 collapsed（界面上默认折叠），
+        证据等级按期刊论文评，把专利也算上的等级在 level_with_patents；
       - 相似先例带 structure_diff（m01_structure.py 的 structure_diff）：query 一侧是这一步的产物，
         reference 一侧是先例的产物；
       - 原文链接：有 DOI 的给 doi.org 的地址；没有 DOI 的专利，专利号认得的给 Google Patents 的地址，
@@ -367,11 +369,13 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
         session.commit()
     analysis = start_analysis(client, account, smiles=ASPIRIN)
     listing = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1/precedents", headers=account["headers"]).json()
-    # 库里有反应物、产物都相同的记录，所以这一步是 E1（文献直接报道）
-    assert listing["evidence"]["level"] == "E1"
-    # 列表里正好两条，解包成两个变量：期刊论文那一组在前（虽然它只是相似先例），专利那一组在后
+    # 反应物、产物都相同的记录只有那条专利，专利不计入证据等级；期刊那条氯代类似物底物够像，所以是 E2。
+    # 算上专利的话是 E1（文献直接报道），记在 level_with_patents
+    assert listing["evidence"]["level"] == "E2" and listing["evidence"]["level_with_patents"] == "E1"
+    # 列表里正好两条，解包成两个变量：期刊论文那一组在前（虽然它只是相似先例），专利那一组在后、默认折叠
     similar, exact = listing["precedents"]
-    assert [(g["doc_type"], g["refs"], g["n_exact"]) for g in listing["groups"]] == [("journal", ["P1"], 0), ("patent", ["P2"], 1)]
+    assert [(g["doc_type"], g["refs"], g["n_exact"], g["collapsed"]) for g in listing["groups"]] == [
+        ("journal", ["P1"], 0, False), ("patent", ["P2"], 1, True)]
     # 只要专利：期刊那条被筛掉，编号还是 P2（和证据卡、说明文字里的对得上）
     patents = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1/precedents", headers=account["headers"],
                          params={"doc_type": "patent"}).json()
@@ -384,7 +388,7 @@ def test_precedent_list_marks_structural_differences(client, account, ctx):
     assert not similar["exact"] and similar["doc_type_label"] == "期刊论文" and similar["url"] == "https://doi.org/10.1000/test"
     # 先例的产物比这一步的产物多一个氯，这一步的产物没有多出来的原子
     assert similar["structure_diff"]["reference_only_fragments"] == ["Cl"] and similar["structure_diff"]["query_only_atoms"] == []
-    # 产率只用同一反应的报道值（90%），不把氯代类似物的 70% 混进来
+    # 产率只用同一反应的报道值（90%，专利报道的也算），不把氯代类似物的 70% 混进来
     card = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1", headers=account["headers"]).json()
     assert card["yield"]["label"] == "文献报道 90%（1 个先例）"
 

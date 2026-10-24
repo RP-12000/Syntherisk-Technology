@@ -159,7 +159,7 @@ def test_low_confidence_routes_never_rank_above_high_confidence_ones():
           挪到它后面，得到 medium、high、low。中置信度的路线不动，所以 85 分的 medium 仍然在 80 分的 high 前面；
       “探索”档（explore）：只按分数，low、medium、high。
     为什么重要：docs/API.md 把它写成排序规则——除“探索”档外，低置信度路线不排在高置信度路线前面。
-    低置信度的路线（有几步没有文献先例，或者依据太少）分数再高，也排不到高置信度路线的前面。
+    低置信度的路线（有几步没有先例，或者依据太少）分数再高，也排不到高置信度路线的前面。
     """
     routes = [_route("low", 90, "low"), _route("medium", 85, "medium"), _route("high", 80, "high"),
               _route("gone", 99, "high", excluded=True)]
@@ -178,7 +178,8 @@ def test_route_confidence_looks_at_how_many_weak_steps_and_what_share_they_are(c
       - 有低置信度的步骤：达到 2 个，或者占比超过 0.34 → 低；否则 → 中；
       - 没有低置信度的步骤：中置信度的达到 2 个，或者占比超过 0.34 → 中；否则 → 高。
     占比这一条是给短路线用的：三步里有一步是 1/3 ≈ 0.333，没超过 0.34；两步里有一步是 0.5，超过了。
-    理由里写明是哪几步：“无文献先例”指这一步的证据等级是 E4；“多数评分项没有数据”指这一步依据太少
+    理由里写明是哪几步：“没有先例”指这一步把专利也算上，证据等级仍是 E4（步骤里的 precedent_level；
+    这里手工造的步骤没有这一项，就看 evidence_level）；“多数评分项没有数据”指这一步依据太少
     （thin：有数据的维度加起来不到 30% 的权重）。
     怎么读：里面的小函数 steps(…) 用几个三元组造出步骤列表。high 代表“有文献直接报道的一步”，
     similar 代表“只有相似先例的一步”。下面六个断言各是一种组合，从全是 high 开始，一步步变差。
@@ -191,19 +192,19 @@ def test_route_confidence_looks_at_how_many_weak_steps_and_what_share_they_are(c
 
     high, similar = ("high", "E1", False), ("medium", "E3", False)
     # 三步都有文献直接报道
-    assert _route_confidence(steps(high, high, high), scoring) == ("high", "每一步都有文献依据")
+    assert _route_confidence(steps(high, high, high), scoring) == ("high", "每一步都有先例")
     # 三步里有一步只有相似先例：只有 1 个，占比 1/3，两个门槛都没到，仍然是高
-    assert _route_confidence(steps(high, high, similar), scoring) == ("high", "每一步都有文献依据")
+    assert _route_confidence(steps(high, high, similar), scoring) == ("high", "每一步都有先例")
     # 短路线里一步只有相似先例，占比就够大了；一步的路线更不能算“高”
     # 两步里一步：占比 0.5；只有一步的路线：占比 1
     assert _route_confidence(steps(high, similar), scoring) == ("medium", "第 2 步只有相似先例")
     assert _route_confidence(steps(similar), scoring) == ("medium", "第 1 步只有相似先例")
-    # 三步里有一步没有文献先例（E4，低置信度）：只有 1 个，占比 1/3，没到“低”的门槛，整条路线是中
-    assert _route_confidence(steps(high, ("low", "E4", False), high), scoring) == ("medium", "第 2 步无文献先例")
+    # 三步里有一步没有先例（E4，低置信度）：只有 1 个，占比 1/3，没到“低”的门槛，整条路线是中
+    assert _route_confidence(steps(high, ("low", "E4", False), high), scoring) == ("medium", "第 2 步没有先例")
     # 依据太少的步骤也算低置信度，原因分开写
     # 第 1 步是 E4，第 2 步是依据太少（证据等级没评估，thin 为 True）：低置信度的有 2 个，整条路线是低
     mixed = steps(("low", "E4", False), ("low", None, True), high)
-    assert _route_confidence(mixed, scoring) == ("low", "第 1 步无文献先例；第 2 步多数评分项没有数据")
+    assert _route_confidence(mixed, scoring) == ("low", "第 1 步没有先例；第 2 步多数评分项没有数据")
 
 
 def test_safety_score_takes_the_worst_hazard_in_full_and_halves_the_rest():
@@ -345,22 +346,27 @@ def test_precedent_links_use_formats_that_open_and_are_left_out_otherwise():
 KETONE, ALCOHOL = "CC(C)Cc1ccc(cc1)C(C)=O", "CC(C)Cc1ccc(cc1)C(C)O"
 
 
-def _seed(ctx, rows):
+def _seed(ctx, rows, doc_type="journal"):
     """往这个测试的先例库（reaction_precedents 表）里放几条现编的先例。
 
     参数：
-        ctx   conftest.py 的夹具（用它开数据库会话）。
-        rows  [(反应 SMILES, 产率), …]。反应写成 “反应物>试剂>产物”；产率是百分数，没有就给 None。
-    每条先例的来源都记成 uspto（没指定文献类型，按专利算），文献号按顺序编成 TEST-0001、TEST-0002……，
-    年份是 2001、2002……。precedent_from_reaction（m05_precedents.py）把一条反应 SMILES 算成表里的一行：
-    反应编号、两种指纹；反应带原子映射时还算出反应中心。
+        ctx       conftest.py 的夹具（用它开数据库会话）。
+        rows      [(反应 SMILES, 产率), …]。反应写成 “反应物>试剂>产物”；产率是百分数，没有就给 None。
+        doc_type  "journal"（默认）：期刊论文，来源记成 academic13k，带一个现编的 DOI，计入证据等级；
+                  "patent"：专利，来源记成 uspto，照样列在证据卡上，但不计入证据等级和文献分
+                  （data/scoring.toml 的 literature_doc_types）。
+    文献号按顺序编成 TEST-0001、TEST-0002……，年份是 2001、2002……。precedent_from_reaction（m05_precedents.py）
+    把一条反应 SMILES 算成表里的一行：反应编号、两种指纹；反应带原子映射时还算出反应中心。
     注意编号每次调用都从 1 开始：同一个测试里调两次，第二次放进去的又是 TEST-0001 起。
     """
+    journal = doc_type == "journal"
     with ctx.session_factory() as session:
         # enumerate(rows, 1) 边遍历边编号，从 1 开始。{index:04d} 把编号写成四位、不够的前面补 0
         for index, (reaction, yield_pct) in enumerate(rows, 1):
-            session.add(precedent_from_reaction(reaction, source="uspto", document_id=f"TEST-{index:04d}", year=2000 + index,
-                                                yield_pct=yield_pct))
+            session.add(precedent_from_reaction(
+                reaction, source="academic13k" if journal else "uspto", doc_type=doc_type,
+                document_id=f"TEST-{index:04d}", doi=f"10.1000/test-{index:04d}" if journal else None,
+                year=2000 + index, yield_pct=yield_pct))
         # add 只是登记，commit 才真正写进数据库
         session.commit()
 
@@ -452,7 +458,8 @@ def test_reported_yield_of_the_same_reaction_is_summarised_over_all_records_not_
 
 
 def _add_journal(ctx, reaction, *, document_id, yield_pct=None):
-    """往先例库里放一条期刊论文的先例（带 DOI，文献类型 journal）。_seed 放的都是专利，这个补上期刊。"""
+    """往先例库里放一条期刊论文的先例（来源 ord，带 DOI，年份 2015），文献号自己定。_seed 的文献号是按顺序编的，
+    要和它放的先例分得开、或者要指定文献号时用这个。"""
     with ctx.session_factory() as session:
         session.add(precedent_from_reaction(reaction, source="ord", doc_type="journal", document_id=document_id,
                                             doi=f"10.1000/{document_id.lower()}", year=2015, yield_pct=yield_pct))
@@ -460,14 +467,17 @@ def _add_journal(ctx, reaction, *, document_id, yield_pct=None):
 
 
 def test_journal_and_patent_precedents_are_searched_separately_and_journals_come_first(ctx):
-    """期刊论文和专利分开检索、各有各的名额，证据卡上期刊论文那一组排在前面。
+    """期刊论文和专利分开检索、各有各的名额，证据卡上期刊论文那一组排在前面，专利那一组默认折叠、不计入文献依据。
 
-    保证的行为（m05_precedents.py 的 PrecedentSearch.find、_per_type、_best_ref；cards.py 的 precedent_groups）：
+    保证的行为（m05_precedents.py 的 PrecedentSearch.find、_per_type、_best_ref、_uncounted_note；
+    cards.py 的 precedent_groups）：
       - 每种文献类型各自挑候选、各自最多列 max_precedents 条（现在是 8）：专利再多、再像，也挤不掉期刊；
       - 列表里期刊论文在前，专利在后；
-      - 证据等级照旧按全部先例来评，分组不改变等级；
+      - 证据等级和文献分只按期刊论文评（data/scoring.toml 的 literature_doc_types，2026-10-24 起专利不算），
+        说明里补一句专利里有更像的先例；把专利也算上的等级另记在 level_with_patents；
       - 借用试剂和条件文字的“最好的先例”（best_ref）：没有同一反应时，够得上 E2 的同类先例里期刊优先；
-        期刊那条够不上（底物相似度低于 0.7）时，用最像的那条专利。
+        期刊那条够不上（底物相似度低于 0.7）时，用最像的那条专利；
+      - 分组时专利组标 collapsed（默认折叠）、counts_for_literature 为 False。
     怎么读：放九条专利，都是对位取代的芳基甲基酮还原成醇，底物和这一步（4-异丁基苯乙酮还原）很像
     （产物相似度 0.72–0.93）；再放一条期刊论文，是 4-甲氧基苯乙酮的还原，没那么像（0.45）。
     分组以前卡上一共只列 8 条，这条期刊会被九条更像的专利挤掉。
@@ -477,13 +487,15 @@ def test_journal_and_patent_precedents_are_searched_separately_and_journals_come
                "CC(=O)c1ccc(C(C)C)cc1"]
     # 每个酮把 C=O 换成 C–OH 就是对应的醇
     _seed(ctx, [(f"{ketone}>>{ketone.replace('C(C)=O', 'C(C)O').replace('CC(=O)', 'CC(O)').replace('CCC(=O)', 'CCC(O)')}", None)
-                for ketone in patents])
+                for ketone in patents], doc_type="patent")
     _add_journal(ctx, "CC(=O)c1ccc(OC)cc1>>CC(O)c1ccc(OC)cc1", document_id="JOURNAL-1")
     with ctx.session_factory() as session:
         found = _search(ctx, session).find([KETONE], ALCOHOL)
 
-    # 最像的专利相似度 0.93，等级仍是 E2（高相似先例）：分组不影响定级
-    assert found["level"] == "E2"
+    # 证据等级只看期刊：那篇论文底物相似度 0.45，是 E3。专利里最像的 0.93，算上专利是 E2，只记在 level_with_patents
+    assert found["level"] == "E3" and found["level_with_patents"] == "E2"
+    assert "专利里有同类反应的先例（底物相似度最高 0.93），不计入文献依据" in found["basis"]
+    assert found["literature_doc_types"] == ["dataset", "journal"]
     types = [p["doc_type"] for p in found["precedents"]]
     # 期刊那条排第一；专利最多 8 条（九条里最不像的那条没列出来）
     assert types == ["journal"] + ["patent"] * 8
@@ -495,8 +507,9 @@ def test_journal_and_patent_precedents_are_searched_separately_and_journals_come
     assert found["precedents"][0]["similarity"] < 0.7 and found["best_ref"] == "P2"
     from syntherisk.cards import precedent_groups
 
-    groups = precedent_groups(found["precedents"], found["n_exact_by_type"])
-    assert [(g["doc_type"], g["count"], g["n_exact"]) for g in groups] == [("journal", 1, 0), ("patent", 8, 0)]
+    groups = precedent_groups(found["precedents"], found["n_exact_by_type"], found["literature_doc_types"])
+    assert [(g["doc_type"], g["count"], g["n_exact"], g["counts_for_literature"], g["collapsed"]) for g in groups] == [
+        ("journal", 1, 0, True, False), ("patent", 8, 0, False, True)]
 
 
 def test_the_same_reaction_reported_in_a_journal_is_preferred_over_a_patent(ctx):
@@ -504,18 +517,38 @@ def test_the_same_reaction_reported_in_a_journal_is_preferred_over_a_patent(ctx)
 
     保证的行为（m05_precedents.py 的 _exact_rows、find、_best_ref、_yield_info）：
     同一反应的记录先按文献类型排（期刊在前），同一类型里再按产率排；best_ref 指向期刊那条；
-    n_exact_by_type 分开数；E1 的产率统计照旧用全部同一反应的记录。
+    n_exact_by_type 分开数；n_exact 只数计入文献依据的（期刊那 1 条）；产率统计照旧用全部同一反应的记录，专利的也算。
     怎么读：专利报道 KETONE → ALCOHOL 产率 95%，期刊论文报道同一个反应产率 60%。
     """
-    _seed(ctx, [(f"{KETONE}>[Na+].[BH4-]>{ALCOHOL}", 95.0)])
+    _seed(ctx, [(f"{KETONE}>[Na+].[BH4-]>{ALCOHOL}", 95.0)], doc_type="patent")
     _add_journal(ctx, f"{KETONE}>[Li+].[AlH4-]>{ALCOHOL}", document_id="JOURNAL-2", yield_pct=60.0)
     with ctx.session_factory() as session:
         found = _search(ctx, session).find([KETONE], ALCOHOL)
-    assert found["level"] == "E1" and found["n_exact"] == 2 and found["n_exact_by_type"] == {"journal": 1, "patent": 1}
+    assert found["level"] == "E1" and found["n_exact"] == 1 and found["n_exact_by_type"] == {"journal": 1, "patent": 1}
+    # 期刊里有同一反应，等级本来就是 E1，说明里不用再补专利那句
+    assert found["level_with_patents"] == "E1" and "不计入文献依据" not in found["basis"]
     # 期刊那条产率低，但仍排在前面，并且是“最好的先例”
     assert [(p["ref"], p["doc_type"], p["yield_pct"]) for p in found["precedents"]] == [("P1", "journal", 60.0), ("P2", "patent", 95.0)]
     assert found["best_ref"] == "P1"
     assert found["yield"]["label"] == "文献报道 60–95%（2 个先例）"
+
+
+def test_precedent_groups_of_older_analyses_are_neither_collapsed_nor_marked_as_not_counted():
+    """2026-10-24 以前的分析结果里没有 literature_doc_types：那时专利也计入证据等级，所以每一组都算计入、都不折叠。
+
+    保证的行为（cards.py 的 precedent_groups）：旧分析的证据卡上，等级和它依据的专利对得上；
+    新的分析（M5 记了 literature_doc_types）里，不在其中的专利那一组 counts_for_literature 为 False、默认折叠。
+    怎么读：同一组先例分两次分组，一次不给 literature_doc_types（旧分析），一次给 ["dataset", "journal"]。
+    """
+    from syntherisk.cards import precedent_groups
+
+    precedents = [{"ref": "P1", "doc_type": "journal", "exact": False}, {"ref": "P2", "doc_type": "patent", "exact": True}]
+    old = precedent_groups(precedents, None)
+    assert [(g["doc_type"], g["n_exact"], g["counts_for_literature"], g["collapsed"]) for g in old] == [
+        ("journal", 0, True, False), ("patent", 1, True, False)]
+    new = precedent_groups(precedents, {"patent": 3}, ["dataset", "journal"])
+    assert [(g["doc_type"], g["n_exact"], g["counts_for_literature"], g["collapsed"]) for g in new] == [
+        ("journal", 0, True, False), ("patent", 3, False, True)]
 
 
 def test_a_step_using_two_molecules_of_one_reactant_matches_a_patent_that_writes_it_once(ctx):

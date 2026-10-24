@@ -894,7 +894,8 @@ def test_steps_with_atom_maps_are_matched_to_precedents_by_reaction_center(clien
     with ctx.session_factory() as session:
         # 现编的两条先例。第一条和这一步是同一种转化（酚羟基被酸酐酰化），底物多一个甲基；
         # 第二条产物一样，但做法是“乙酸根取代芳环上的氟”，成的不是同一根键
-        # 写法是专利数据的 “反应物>>产物”，带原子映射。两条各自算出来的反应中心：
+        # 写法是 “反应物>>产物”，带原子映射。两条都记成期刊论文（来源 ord）：专利不计入证据等级，
+        # 而这个测试要看的是按反应中心定级。两条各自算出来的反应中心：
         #   TEST-ACYL  F:C.acyl~OH.ar:1|L:C.acyl~O.acyl:1，和这一步的一模一样；
         #              它的产物和阿司匹林的结构相似度是 0.841
         #   TEST-SNAR  F:OH.acyl~c:1|L:c~F:1（羧酸的氧接到芳环碳上，芳环碳上掉了一个氟）；
@@ -903,11 +904,11 @@ def test_steps_with_atom_maps_are_matched_to_precedents_by_reaction_center(clien
         session.add(precedent_from_reaction(
             "[OH:1][c:2]1[cH:3][cH:4][c:14]([CH3:15])[cH:6][c:7]1[C:8](=[O:9])[OH:10].[CH3:11][C:12](=[O:13])OC(C)=O"
             ">>[CH3:11][C:12](=[O:13])[O:1][c:2]1[cH:3][cH:4][c:14]([CH3:15])[cH:6][c:7]1[C:8](=[O:9])[OH:10]",
-            source="uspto", document_id="TEST-ACYL", year=2001, yield_pct=88.0))
+            source="ord", doc_type="journal", document_id="TEST-ACYL", doi="10.1000/test-acyl", year=2001, yield_pct=88.0))
         session.add(precedent_from_reaction(
             "[CH3:11][C:12](=[O:13])[OH:1].F[c:2]1[cH:3][cH:4][c:14]([CH3:15])[cH:6][c:7]1[C:8](=[O:9])[OH:10]"
             ">>[CH3:11][C:12](=[O:13])[O:1][c:2]1[cH:3][cH:4][c:14]([CH3:15])[cH:6][c:7]1[C:8](=[O:9])[OH:10]",
-            source="uspto", document_id="TEST-SNAR", year=2002, yield_pct=35.0))
+            source="ord", doc_type="journal", document_id="TEST-SNAR", doi="10.1000/test-snar", year=2002, yield_pct=35.0))
         session.commit()
 
     class StubAiZynth:
@@ -1445,7 +1446,11 @@ def test_loading_precedents_changes_evidence_levels_in_the_next_analysis(client,
         loaders.load_precedents(ctx, wrong, "uspto", replace=True, progress=lambda _m: None)
     assert loaders.summarize(ctx)["precedents"] == {"uspto": 1}
 
-    # 导入完成。下面看它对分析的影响：演示引擎给阿司匹林三条路线，里面一共有三步不同的反应
+    # 导入完成。下面看它对分析的影响：演示引擎给阿司匹林三条路线，里面一共有三步不同的反应。
+    # 导进去的是 USPTO 专利，而专利默认不计入证据等级（data/scoring.toml 的 literature_doc_types）；
+    # 这里按配置把专利也算进去，看的是“导入以后等级跟着变”。默认配置下的样子见下一个测试。
+    # ctx 是每个测试新建的，改它的配置不影响别的测试
+    ctx.reference.scoring["evidence"]["literature_doc_types"] = ["journal", "dataset", "patent"]
     analysis = start_analysis(client, account, smiles=ASPIRIN)
     # stages[3] 是第 4 阶段“文献先例”，它的说明里数了各个证据等级各有几步；其中 1 步是“直接报道”（E1）
     assert "直接报道 1" in analysis["stages"][3]["message"]
@@ -1474,8 +1479,119 @@ def test_loading_precedents_changes_evidence_levels_in_the_next_analysis(client,
     assert by_name["乙酸酐酰化"]["confidence_label"] == "高" and by_name["乙酸酐酰化"]["evidence_text"] == "每步都有文献"
     kolbe = by_name["从苯酚出发（Kolbe–Schmitt）"]
     # 两步里有一步是低置信步骤，占比 0.5 超过了 low_fraction_for_low（0.34），所以整条路线的置信度是“低”
-    assert kolbe["confidence_label"] == "低" and kolbe["confidence_reason"] == "第 1 步无文献先例"
+    assert kolbe["confidence_label"] == "低" and kolbe["confidence_reason"] == "第 1 步没有先例"
     assert by_name["乙酸酐酰化"]["rank"] < kolbe["rank"]  # 低置信度路线不排在高置信度路线前面
+
+
+def test_a_step_reported_only_in_patents_is_graded_without_them_but_keeps_their_yield(client, account, ctx):
+    """同一个反应只有专利报道过、期刊里没有：证据等级不算专利，但专利照样列出来、照样给产率，说明里如实交代。
+
+    保证的行为（默认配置：data/scoring.toml 的 literature_doc_types 是期刊论文和数据集，专利不计入）：
+        m05_precedents.PrecedentSearch.find：证据等级和文献分只看期刊，这一步是 E4，文献依据按 E4 给分；
+            把专利也算上是 E1，记在 level_with_patents；说明后面补一句（uncounted_note）
+        产率照样取专利报道的值（_yield_info 按 level_with_patents 取）
+        cards.precedent_groups：专利那一组 counts_for_literature 为 False、collapsed 为 True（界面上默认折叠）
+        pipeline.AnalysisRunner._precedents：第 4 阶段的小结后面补一句有几步在专利里有更接近的先例
+        m11_explain：说明的第 2 句写“文献里没有找到可参考的先例”并接上专利那句，出处是那条专利
+        M10：置信度和筛选看把专利也算上的等级（E1），所以这条一步的路线仍是高置信度，理由“每一步都有先例”；
+            路线卡上概括文献依据的那句话只算期刊，是“1 步没有文献先例”
+    怎么读：往先例库里放一条现编的专利（水杨酸 + 乙酸酐 → 阿司匹林，产率 85%），再分析阿司匹林。
+        演示路线 r1“乙酸酐酰化”只有这一步。
+    为什么重要：专利不参与文献吻合度的计算（2026-10-24 Anna 的要求），但专利里的产率和条件仍然有用；
+        说明里不交代的话，用户会以为这一步什么先例都没有。
+    """
+    with ctx.session_factory() as session:
+        session.add(precedent_from_reaction(f"OC(=O)c1ccccc1O.CC(=O)OC(C)=O>>{ASPIRIN}", source="uspto",
+                                            document_id="TEST-0001", year=2001, yield_pct=85.0))
+        session.commit()
+    analysis = start_analysis(client, account, smiles=ASPIRIN)
+    # 第 4 阶段的小结：等级里不算专利，后面补一句
+    assert analysis["stages"][3]["message"] == (
+        "3 个步骤：直接报道 0 · 高相似 0 · 低相似 0 · 未找到先例 3；专利不计入，其中 1 步在专利里有更接近的先例")
+    card = client.get(f"/api/analyses/{analysis['id']}/routes/r1/steps/1", headers=account["headers"]).json()
+    evidence = card["evidence"]
+    assert evidence["level"] == "E4" and evidence["level_with_patents"] == "E1" and evidence["n_exact"] == 0
+    assert evidence["uncounted_note"] == "专利里有 1 条同一反应，不计入文献依据"
+    assert evidence["basis"] == "未找到先例；专利里有 1 条同一反应，不计入文献依据"
+    # 专利照样列出来：只有专利那一组，不计入文献依据，默认折叠
+    assert [(g["doc_type"], g["refs"], g["n_exact"], g["counts_for_literature"], g["collapsed"])
+            for g in card["precedent_groups"]] == [("patent", ["P1"], 1, False, True)]
+    # 产率照样用专利报道的 85%；文献依据这一维按 E4 给分（演示路线没有模型概率，是 no_precedent_score 15）
+    assert card["yield"]["label"] == "文献报道 85%（1 个先例）"
+    assert {d["key"]: d["score"] for d in card["dimensions"]}["literature"] == 15
+    # 说明的第 2 句交代专利里有先例，出处 [1] 就是那条专利
+    assert "文献里没有找到可参考的先例；专利里有 1 条同一反应，不计入文献依据[1]" in card["explanation"]["text"]
+    result = client.get(f"/api/analyses/{analysis['id']}/result", headers=account["headers"]).json()
+    acetylation = {route["name"]: route for route in result["routes"]}["乙酸酐酰化"]
+    assert acetylation["confidence_label"] == "高" and acetylation["confidence_reason"] == "每一步都有先例"
+    assert acetylation["evidence_text"] == "1 步没有文献先例"
+
+    # 再放一篇期刊论文报道同一个反应（产率 90%），重新分析：这下是 E1，说明里把论文和专利分开数，
+    # 产率两条一起统计；期刊那一组在前、不折叠
+    with ctx.session_factory() as session:
+        session.add(precedent_from_reaction(f"OC(=O)c1ccccc1O.CC(=O)OC(C)=O>>{ASPIRIN}", source="ord", doc_type="journal",
+                                            document_id="TEST-J1", doi="10.1000/test-j1", year=2015, yield_pct=90.0))
+        session.commit()
+    again = start_analysis(client, account, smiles=ASPIRIN)
+    card = client.get(f"/api/analyses/{again['id']}/routes/r1/steps/1", headers=account["headers"]).json()
+    assert card["evidence"]["level"] == "E1" and card["evidence"]["n_exact"] == 1 and card["evidence"]["uncounted_note"] is None
+    assert [(g["doc_type"], g["collapsed"]) for g in card["precedent_groups"]] == [("journal", False), ("patent", True)]
+    assert ("先例库里有 1 个文献先例报道了同一个反应，专利里另有 1 条（专利不计入文献依据），文献报道 85–90%（2 个先例）"
+            in card["explanation"]["text"])
+
+
+def test_fill_literature_adds_years_and_titles_to_journal_precedents_by_doi(ctx, capsys):
+    """fill-literature 命令（loaders.fill_literature_metadata）：按 DOI 给期刊先例补年份和题目。
+
+    保证的行为：
+        只查有 DOI、还缺年份或题目的先例，同一个 DOI 只查一次，查到的写进这个 DOI 的每一行；
+        只填空着的列，已有的年份不覆盖；题目里的排版标记（<i>…</i>）去掉；
+        查不到的 DOI 什么都不写；--source 只补那个来源的；
+        接口出错时停下，已经补好的留在库里，并说明停在哪个 DOI（再运行一次会接着查）。
+    怎么读：放四条先例：两条共用 DOI 10.1000/a（其中一条已经有年份 2010），一条 DOI 查不到，一条是没有 DOI 的专利。
+        假的文献客户端只认得 10.1000/a。
+    为什么重要：期刊数据（academic13k）只有 DOI 和反应式，补上以后证据卡上的论文才显示得出年份（Anna 的要求）。
+    """
+    with ctx.session_factory() as session:
+        session.add(precedent_from_reaction("CC(=O)O.CO>>COC(C)=O", source="academic13k", doc_type="journal",
+                                            document_id="10.1000/a", doi="10.1000/a"))
+        session.add(precedent_from_reaction("CC(=O)O.CCO>>CCOC(C)=O", source="academic13k", doc_type="journal",
+                                            document_id="10.1000/a", doi="10.1000/a", year=2010))
+        session.add(precedent_from_reaction("CC(=O)Cl.CO>>COC(C)=O", source="academic13k", doc_type="journal",
+                                            document_id="10.1000/missing", doi="10.1000/missing"))
+        session.add(precedent_from_reaction("CC(=O)O.CO>>COC(C)=O", source="uspto", document_id="US0000001"))
+        session.commit()
+
+    class StubLiterature:
+        """顶替 external.LiteratureClient：只认得 10.1000/a，记下被问了哪些 DOI。"""
+
+        def __init__(self):
+            self.asked = []
+
+        def by_doi(self, doi):
+            self.asked.append(doi)
+            return {"year": 2012, "title": "Esterification <i>in situ</i>"} if doi == "10.1000/a" else None
+
+    stub = StubLiterature()
+    cli.cmd_fill_literature(ctx, argparse.Namespace(source="academic13k", limit=None), client=stub)
+    # 两个 DOI 各问一次；没有 DOI 的专利不问
+    assert stub.asked == ["10.1000/a", "10.1000/missing"]
+    assert "查了 2 个 DOI，查到 1 个，两边都没有 1 个，改了 3 行" in capsys.readouterr().out
+    with ctx.session_factory() as session:
+        # 按放进去的顺序（id）取出四行的 DOI、年份、题目
+        rows = [(row.doi, row.year, row.title) for row in
+                session.scalars(select(models.ReactionPrecedent).order_by(models.ReactionPrecedent.id))]
+    # 10.1000/a 的两行都补上了题目；原来空着年份的那行补成 2012，已有的 2010 不动。查不到的和专利都没动
+    assert rows == [("10.1000/a", 2012, "Esterification in situ"), ("10.1000/a", 2010, "Esterification in situ"),
+                    ("10.1000/missing", None, None), (None, None, None)]
+
+    # 接口出错：停在出错的那个 DOI，补好的不丢。10.1000/a 已经补全，不会再被选中，所以只问 10.1000/missing
+    class Broken:
+        def by_doi(self, doi):
+            raise ExternalServiceError("请求超时")
+
+    stats = loaders.fill_literature_metadata(ctx, Broken(), progress=lambda _m: None)
+    assert stats["dois"] == 1 and stats["stopped_at"] == "10.1000/missing" and stats["error"] == "请求超时"
 
 
 def test_journal_reactions_written_as_doi_and_smiles_are_loaded_as_journal_articles(ctx, tmp_path):

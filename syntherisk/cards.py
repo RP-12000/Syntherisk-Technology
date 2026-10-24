@@ -248,19 +248,27 @@ def render_sentences(sentences: list[dict[str, Any]], sources: list[dict[str, An
 
 
 def precedent_groups(precedents: list[dict[str, Any]],
-                     n_exact_by_type: dict[str, int] | None) -> list[dict[str, Any]]:
+                     n_exact_by_type: dict[str, int] | None,
+                     literature_doc_types: list[str] | None = None) -> list[dict[str, Any]]:
     """把证据卡上的先例按文献类型分组：期刊论文在前、专利在后（m05_precedents.DOC_TYPE_ORDER）。
 
     M5 是按文献类型分开检索的（每种类型各自最多列 max_precedents 条），这里把结果按类型分好组，
     前端可以分成“期刊论文”“专利”两块显示，也可以只看其中一块（先例列表接口的 doc_type 参数）。
+    不计入文献依据的类型（专利）标成默认折叠：界面上先收起来，点开才看。
     参数：
-        precedents       证据卡上的先例列表（M5 已经按“期刊在前”排好）。
-        n_exact_by_type  M5 数好的每种类型里同一反应的记录数；旧的分析结果里没有，这时按列出来的数。
+        precedents            证据卡上的先例列表（M5 已经按“期刊在前”排好）。
+        n_exact_by_type       M5 数好的每种类型里同一反应的记录数；旧的分析结果里没有，这时按列出来的数。
+        literature_doc_types  计入文献依据的文献类型（M5 记在 evidence 里）。2026-10-24 以前的分析结果里没有：
+                              那时每种类型都计入证据等级，所以这时每一组都算计入、都不折叠，和当时的等级对得上。
     返回：
-        [{"doc_type": "journal", "label": "期刊论文", "refs": ["P1", "P2"], "count": 2, "n_exact": 1}, …]，
-        只列有先例的类型。refs 是这一组先例的编号；n_exact 是库里这种类型的同一反应记录数（可能比列出来的多）。
+        [{"doc_type": "journal", "label": "期刊论文", "refs": ["P1", "P2"], "count": 2, "n_exact": 1,
+          "counts_for_literature": True, "collapsed": False}, …]，只列有先例的类型。
+        refs 是这一组先例的编号；n_exact 是库里这种类型的同一反应记录数（可能比列出来的多）；
+        counts_for_literature 这种类型计不计入证据等级和文献分；collapsed 界面上是否默认折叠（不计入的折叠）。
     谁在用：build_card()；api/analyses.py 的 get_step_precedents。
     """
+    # None 表示旧的分析结果：每种类型都计入
+    counted = set(literature_doc_types) if literature_doc_types is not None else None
     groups: dict[str, list[dict[str, Any]]] = {}
     for precedent in precedents:
         groups.setdefault(precedent.get("doc_type") or "patent", []).append(precedent)
@@ -274,6 +282,8 @@ def precedent_groups(precedents: list[dict[str, Any]],
             "refs": [p["ref"] for p in members],
             "count": len(members),
             "n_exact": n_exact_by_type.get(doc_type, listed_exact) if n_exact_by_type is not None else listed_exact,
+            "counts_for_literature": counted is None or doc_type in counted,
+            "collapsed": counted is not None and doc_type not in counted,
         })
     return out
 
@@ -373,8 +383,12 @@ def build_card(
             "stars": evidence.get("stars"),
             # 一句话的定级理由，比如 “2 个先例报道了同一个反应”
             "basis": evidence.get("basis"),
-            # 库里报道了同一个反应（反应物、产物都相同）的先例有几条
+            # 计入文献依据的先例里，报道了同一个反应（反应物、产物都相同）的有几条；专利里的不算
             "n_exact": evidence.get("n_exact", 0),
+            # 把专利也算上时的等级（专利不计入上面的 level）；旧的分析结果里没有这一项，和 level 相同
+            "level_with_patents": evidence.get("level_with_patents", evidence.get("level")),
+            # 专利里有更接近的先例、但不计入文献依据时的一句说明（已经接在 basis 后面）；没有是 None
+            "uncounted_note": evidence.get("uncounted_note"),
             # 同类反应的先例里最高的底物相似度（0–1）；有同一反应的先例时是 1.0，没有同类先例时是 None
             "best_similarity": evidence.get("best_similarity"),
             # True：先例库还没有导入数据，所以没有评等级
@@ -395,7 +409,7 @@ def build_card(
                        for precedent in evidence.get("precedents") or []],
         # 上面的先例按文献类型分组（期刊论文在前、专利在后），前端分开显示用；见 precedent_groups()
         "precedent_groups": precedent_groups(evidence.get("precedents") or [],
-                                             evidence.get("n_exact_by_type")),
+                                             evidence.get("n_exact_by_type"), evidence.get("literature_doc_types")),
         # ---- 反应本身
         # “反应物>试剂>产物”形式的反应 SMILES
         "reaction_smiles": reaction["reaction_smiles"],
