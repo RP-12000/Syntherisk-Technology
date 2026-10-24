@@ -38,7 +38,9 @@ M1 里要联网的那一半（名称、CAS 号转结构，查 PubChem 和 OPSIN�
         standard_tautomer    交给逆合成引擎之前，换成标准的互变异构体写法（保留立体构型）
         net_charge、is_salt_like、fragment_key14s  处理盐和离子
     画图
-        mol_to_svg、mol_to_png   分子结构图
+        mol_to_svg、mol_to_png   分子结构图（R1 预览上标出 R / S、E / Z）
+    三维结构
+        conformer_3d         算一个分子的三维坐标（保留手性），给前端画可以旋转的 3D 结构图
     指纹与相似度
         structure_bits       结构指纹
         difference_bits、environment_delta、delta_similarity   反应类别指纹和它的精确版本（不需要原子映射）
@@ -70,7 +72,7 @@ from functools import lru_cache
 
 import numpy as np
 from rdkit import Chem, RDLogger
-from rdkit.Chem import Descriptors, rdFingerprintGenerator, rdFMCS, rdMolDescriptors
+from rdkit.Chem import AllChem, Descriptors, rdCIPLabeler, rdFingerprintGenerator, rdFMCS, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Chem.MolStandardize import rdMolStandardize
 
@@ -178,6 +180,8 @@ class StructureInfo:
     stereocenters: int = 0
     # 其中没有写明构型的有几个；这些按外消旋处理
     unspecified_stereocenters: int = 0
+    # 写明了构型的立体中心和双键的 CIP 标记，按原子顺序，比如 ["S"]、["R", "S", "E"]（见 cip_labels）
+    stereo_labels: list[str] = field(default_factory=list)
     # 整个分子的净电荷，中性分子是 0
     formal_charge: int = 0
     # 立体化学的说明，比如“1 个立体中心未指定，按外消旋处理”
@@ -362,6 +366,7 @@ def describe_mol(mol: Chem.Mol, fmt: str = "smiles", *, with_svg: bool = True) -
         components=components,
         stereocenters=centers,
         unspecified_stereocenters=unspecified,
+        stereo_labels=cip_labels(mol),
         formal_charge=charge,
     )
     # 下面几条是提示，不影响 valid。立体化学的两条进 messages
@@ -379,8 +384,28 @@ def describe_mol(mol: Chem.Mol, fmt: str = "smiles", *, with_svg: bool = True) -
         info.warnings.append(i18n.tr("结构里没有碳原子，逆合成搜索可能找不到路线",
                                      "The structure contains no carbon atoms; the retrosynthesis search may find no routes"))
     if with_svg:
-        info.svg = mol_to_svg(mol)
+        # 画图板画了楔形键、或者 SMILES 写了 @ / @@ 时，图上在手性中心旁边标 (R) / (S)，用户能当场核对构型
+        info.svg = mol_to_svg(mol, stereo_labels=True)
     return info
+
+
+def cip_labels(mol: Chem.Mol) -> list[str]:
+    """写明了构型的立体中心和双键的 CIP 标记（R / S、E / Z），按原子、键的编号顺序。
+
+    参数：mol  RDKit 分子（不改它，在副本上算）。
+    返回：比如 (S)-布洛芬是 ["S"]；没写构型的立体中心不出现，所以外消旋的布洛芬是 []。
+    用的是 RDKit 的新 CIP 标记算法（rdCIPLabeler），比旧的 AssignStereochemistry 规则更准。
+    谁在用：describe_mol（R1 预览的 stereo_labels）、conformer_3d。
+    """
+    copy = Chem.Mol(mol)
+    try:
+        rdCIPLabeler.AssignCIPLabels(copy)
+    except (RuntimeError, ValueError):
+        # 极少数结构（太复杂的大环、金属配合物）算不出来，就不给标记
+        return []
+    labels = [atom.GetProp("_CIPCode") for atom in copy.GetAtoms() if atom.HasProp("_CIPCode")]
+    labels += [bond.GetProp("_CIPCode") for bond in copy.GetBonds() if bond.HasProp("_CIPCode")]
+    return labels
 
 
 def validate_structure(text: str, fmt: str = "auto", *, with_svg: bool = True) -> StructureInfo:
@@ -623,13 +648,16 @@ def _as_mol(mol_or_smiles) -> Chem.Mol | None:
     return to_mol(mol_or_smiles) if isinstance(mol_or_smiles, str) else mol_or_smiles
 
 
-def mol_to_svg(mol_or_smiles, width: int = 320, height: int = 220, highlight_atoms=None) -> str | None:
+def mol_to_svg(mol_or_smiles, width: int = 320, height: int = 220, highlight_atoms=None,
+               stereo_labels: bool = False) -> str | None:
     """把分子画成 SVG 图（矢量图，是一段 XML 文本，前端可以直接嵌进页面）。
 
     参数：
         mol_or_smiles    SMILES 字符串，或者 RDKit 分子
         width、height    图的宽和高（像素）
         highlight_atoms  要高亮的原子编号（从 0 开始）。structure_diff 用它标出两个结构不一样的部分
+        stereo_labels    True：在写明了构型的手性中心、双键旁边标 (R) / (S)、(E) / (Z)。R1 预览用；
+                         路线树、证据卡上的小图不标，免得挤
     返回：SVG 文本；结构读不出来时返回 None。
     谁在用：describe_mol（R1 预览）；structure_diff（C2）；m01_resolver.NameResolver.lookup（A3 候选结构的小图）；
             api/structures.py 的 depict_structure（GET /api/structures/depict）；api/views.py 的 tree_view（R5 路线树）；
@@ -642,6 +670,7 @@ def mol_to_svg(mol_or_smiles, width: int = 320, height: int = 220, highlight_ato
     drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
     # 不先涂底色，图的背景是透明的
     drawer.drawOptions().clearBackground = False
+    drawer.drawOptions().addStereoAnnotation = stereo_labels
     # 给分子排好二维坐标并画上去；highlight_atoms 是 None 时换成空列表（没有要高亮的）
     rdMolDraw2D.PrepareAndDrawMolecule(drawer, mol, highlightAtoms=list(highlight_atoms or []))
     drawer.FinishDrawing()
@@ -662,6 +691,70 @@ def mol_to_png(mol_or_smiles, width: int = 360, height: int = 240) -> bytes | No
     rdMolDraw2D.PrepareAndDrawMolecule(drawer, mol)
     drawer.FinishDrawing()
     return drawer.GetDrawingText()
+
+
+# ---------------------------------------------------------------- 三维结构
+
+# 算三维结构的分子上限（重原子数）。再大的分子算构象很慢，前端也画不清楚
+MAX_3D_HEAVY_ATOMS = 120
+
+
+def conformer_3d(text: str) -> dict:
+    """算一个分子的三维结构（一个合理的构象），给前端画可以旋转的 3D 结构图。
+
+    参数：
+        text  SMILES、MOL 或 SDF 文本（和 validate_structure 一样自动判断格式）。画图板画的楔形键、SMILES 里的
+              @ / @@ 都保留下来：算出来的三维结构就是那个构型。
+    返回：
+        {"smiles": 规范 SMILES,
+         "atoms": [{"element": "C", "x": 1.234, "y": …, "z": …, "charge": 0}, …]  含氢原子；坐标单位是埃，三位小数
+         "bonds": [{"a": 0, "b": 1, "order": 1}, …]  a、b 是 atoms 里的下标；order 是 1、2、3（芳环写成单双键交替）
+         "stereo_labels": ["S"]  写明了构型的立体中心和双键的 CIP 标记，同 cip_labels
+         "unspecified_stereocenters": 0  没写构型的立体中心有几个；3D 图里它们随便取了一种构型
+         "molblock": 带三维坐标的 MOL 文本，想用别的软件打开时下载它}
+    抛出：
+        ValueError  结构读不出来、太大（超过 MAX_3D_HEAVY_ATOMS 个重原子）、或者算不出三维结构。异常的文字是给用户看的句子。
+    做法：加上氢 → ETKDG 生成构象（RDKit 的距离几何法，带实验扭转角偏好；随机种子固定，同一个分子每次结果一样）
+         → MMFF 力场优化（缺参数时改用 UFF）。几十个原子的分子不到 0.1 秒。
+    谁在用：api/structures.py 的 structure_3d（GET /api/structures/3d）。
+    """
+    mol, _fmt, errors, _warnings = parse_mol(text)
+    if mol is None:
+        raise ValueError(errors[0] if errors else i18n.tr("结构读不出来", "The structure could not be read"))
+    if mol.GetNumHeavyAtoms() > MAX_3D_HEAVY_ATOMS:
+        raise ValueError(i18n.tr("分子太大（超过 {n} 个重原子），暂不画 3D 结构",
+                                 "The molecule is too large (more than {n} heavy atoms) to draw in 3D",
+                                 n=MAX_3D_HEAVY_ATOMS))
+    with_h = Chem.AddHs(mol)
+    params = AllChem.ETKDGv3()
+    params.randomSeed = 0xC0FFEE
+    if AllChem.EmbedMolecule(with_h, params) != 0:
+        # 有些笼状、大环分子从默认的起点嵌不进去，换成随机坐标起点再试一次
+        params.useRandomCoords = True
+        if AllChem.EmbedMolecule(with_h, params) != 0:
+            raise ValueError(i18n.tr("这个分子算不出三维结构", "Could not compute a 3D structure for this molecule"))
+    if AllChem.MMFFHasAllMoleculeParams(with_h):
+        AllChem.MMFFOptimizeMolecule(with_h, maxIters=500)
+    else:
+        AllChem.UFFOptimizeMolecule(with_h, maxIters=500)
+    # 芳环写成单双键交替（凯库勒式），前端按 1、2、3 画键就行
+    Chem.Kekulize(with_h, clearAromaticFlags=True)
+    conformer = with_h.GetConformer()
+    atoms = []
+    for atom in with_h.GetAtoms():
+        position = conformer.GetAtomPosition(atom.GetIdx())
+        atoms.append({"element": atom.GetSymbol(), "x": round(position.x, 3), "y": round(position.y, 3),
+                      "z": round(position.z, 3), "charge": atom.GetFormalCharge()})
+    bonds = [{"a": bond.GetBeginAtomIdx(), "b": bond.GetEndAtomIdx(), "order": int(bond.GetBondTypeAsDouble())}
+             for bond in with_h.GetBonds()]
+    return {
+        "smiles": Chem.MolToSmiles(mol),
+        "atoms": atoms,
+        "bonds": bonds,
+        "stereo_labels": cip_labels(mol),
+        "unspecified_stereocenters": _stereo_counts(mol)[1],
+        "molblock": Chem.MolToMolBlock(with_h),
+    }
 
 
 # ---------------------------------------------------------------- 指纹与相似度

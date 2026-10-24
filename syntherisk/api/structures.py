@@ -10,7 +10,8 @@
     C2  相似先例的结构差异                              POST /api/structures/diff
     C4  原料标签（库存、在售、价格）                     GET  /api/materials/availability
 
-另有一个没有对应按钮编号的接口：GET /api/structures/depict，把一个 SMILES 画成 SVG 图片。
+另有两个没有对应按钮编号的接口：GET /api/structures/depict，把一个 SMILES 画成 SVG 图片；
+GET /api/structures/3d，算一个结构的三维坐标（保留手性），给前端画可以旋转的 3D 结构图。
 本文件的接口都要登录。
 
 这个文件只是薄薄的一层：收请求、调模块、返回结果。真正干活的代码在：
@@ -33,6 +34,7 @@
     upload_structure       POST /api/structures/upload        A4
     lookup_structure       GET  /api/structures/lookup        A3
     depict_structure       GET  /api/structures/depict
+    structure_3d           GET  /api/structures/3d
     diff_structures        POST /api/structures/diff          C2
     parse_requirement      POST /api/constraints/parse        A14
     material_availability  GET  /api/materials/availability   C4
@@ -73,6 +75,7 @@ def _with_name(info: chem.StructureInfo, ctx: AppContext) -> dict:
             heavy_atoms       重原子（氢以外的原子）个数
             components        有几个不相连的部分；盐或混合物会大于 1
             stereocenters、unspecified_stereocenters   立体中心的个数、其中没有指定构型的个数
+            stereo_labels     写明了构型的手性中心和双键的 CIP 标记，如 ["S"]
             formal_charge     净电荷
             messages、warnings、errors   提示、警告、错误，都是中文句子的列表
             svg               结构图（SVG 文本）
@@ -102,6 +105,8 @@ def validate_structure(body: schemas.StructureInput, ctx: AppContext = Depends(g
     - `formula`、`mol_weight`、`heavy_atoms`：分子式、分子量、重原子个数
     - `components`：有几个不相连的部分（盐或混合物会大于 1）
     - `stereocenters`、`unspecified_stereocenters`：立体中心的个数、其中没有指定构型的个数
+    - `stereo_labels`：写明了构型的手性中心和双键的 CIP 标记，按原子顺序，如 `["S"]`、`["R", "E"]`；
+      画图板用实楔键、虚楔键画的构型在这里核对。结构图（`svg`）上也在这些位置旁边标了 (R) / (S)
     - `formal_charge`：净电荷
     - `messages`、`warnings`、`errors`：提示、警告、错误，都是中文句子的数组，可以直接显示
     - `svg`：结构图（SVG 文本）
@@ -180,6 +185,31 @@ def depict_structure(smiles: str, width: int = Query(320, ge=60, le=1200), heigh
         raise HTTPException(422, i18n.tr("结构读不出来", "The structure could not be read"))
     # 用 Response 直接返回文本并指明类型；不这样写的话 FastAPI 会把字符串当成 JSON 返回
     return Response(content=svg, media_type="image/svg+xml")
+
+
+@router.get("/structures/3d", tags=["结构"])
+def structure_3d(smiles: str = Query(min_length=1, max_length=20000), _: Principal = Depends(get_principal)):
+    """一个结构的三维坐标，给前端画可以拖动旋转的 3D 结构图（R1 预览旁边的“3D 结构”）。
+
+    需要登录。查询参数 `smiles`：要算的结构，一般是校验结果里的规范 SMILES（带 @ / @@ 的手性写法会保留，
+    画图板用楔形键画的构型校验后就在这个 SMILES 里）。返回：
+
+    - `smiles`：规范 SMILES
+    - `atoms`：原子的数组，含氢原子，每项 `{element, x, y, z, charge}`，坐标单位是埃
+    - `bonds`：键的数组，每项 `{a, b, order}`，`a`、`b` 是 `atoms` 里的下标（从 0 数起），`order` 是 1、2、3（芳环画成单双键交替）
+    - `stereo_labels`：写明了构型的手性中心和双键的 CIP 标记，如 `["S"]`、`["R", "E"]`
+    - `unspecified_stereocenters`：没写构型的立体中心有几个；3D 图里它们随便取了一种构型，界面上要说明
+    - `molblock`：带三维坐标的 MOL 文本，可以存成 .mol 文件用别的软件打开
+
+    算法是 RDKit 的 ETKDG 加 MMFF 力场优化，同一个结构每次结果一样；几十个原子的分子不到 0.1 秒。
+
+    出错：401 没登录；422 结构读不出来、分子太大（超过 120 个重原子）或者算不出三维结构，`detail` 是给用户看的句子。
+    """
+    # chem.conformer_3d 在 modules/m01_structure.py 里，只做计算，不查库不联网；有问题时抛 ValueError，文字可以直接显示
+    try:
+        return chem.conformer_3d(smiles)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.post("/structures/diff", tags=["结构"])

@@ -34,6 +34,10 @@ m07_conditions.name_reaction（按官能团变化给反应起名）和 m09_green
     解析与校验
         test_valid_smiles_reports_formula_weight_and_open_stereocenter
             合法的 SMILES 给出分子式、分子量、结构图；没写构型的手性碳得到一句提示
+        test_wedge_and_hash_bonds_drawn_in_the_editor_set_the_configuration
+            画图板的实楔键、虚楔键定下手性中心的构型：给出 R / S，结构图上也标出来
+        test_3d_structure_keeps_the_configuration_and_is_the_same_every_time
+            3D 结构带氢、键长合理、构型和输入的一样，每次算出来都一样
         test_invalid_structures_explain_what_is_wrong
             读不出来的结构不会让程序出错，而是 valid=False，并用中文说明哪里不对
         test_molblock_and_sdf_are_detected_automatically
@@ -71,6 +75,9 @@ m07_conditions.name_reaction（按官能团变化给反应起名）和 m09_green
         test_reaction_naming_and_atom_economy
             按官能团变化认得出常见的反应类型；原子经济性按分子量算，反应物不全时不给数
 """
+
+import pytest
+from rdkit import Chem
 
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m07_conditions import name_reaction
@@ -122,6 +129,63 @@ def test_valid_smiles_reports_formula_weight_and_open_stereocenter():
     # 默认会带一张 320 × 220 的结构图（SVG 是一段 XML 文本）。RDKit 画出来的以 XML 声明 <?xml 开头；
     # 这里两种情况都接受：以 <?xml 开头，或者文本里有 <svg 标签
     assert info.svg.startswith("<?xml") or "<svg" in info.svg
+
+
+def _with_bond_stereo(block: str, change) -> str:
+    """把 MOL 文本里每根键的立体标记（第 10–12 列：0 普通、1 实楔键、6 虚楔键）按 change 换掉，其余不动。"""
+    lines = block.split("\n")
+    # 第 4 行是计数行：前三列是原子数，接着三列是键数；原子行在前，键行紧跟在后
+    n_atoms, n_bonds = int(lines[3][:3]), int(lines[3][3:6])
+    for i in range(4 + n_atoms, 4 + n_atoms + n_bonds):
+        lines[i] = lines[i][:9] + f"{change(int(lines[i][9:12])):>3}" + lines[i][12:]
+    return "\n".join(lines)
+
+
+def test_wedge_and_hash_bonds_drawn_in_the_editor_set_the_configuration():
+    """画图板用实楔键、虚楔键画出来的构型能读出来：校验结果给出 R / S，结构图上也标出来。
+
+    保证的行为：chem.validate_structure 读 MOL 文本时按键的立体标记（1 实楔键、6 虚楔键，窄的一头是手性中心）
+    定手性中心的构型；stereo_labels 给出 CIP 标记，svg 上在手性中心旁边标 (R) / (S)（RDKit 画成 class 为 note 的路径）。
+    实楔键换成虚楔键就是另一个对映体；不画楔形键就是没写构型。
+    怎么读：L-丙氨酸（S 构型）让 RDKit 写成 MOL 文本，里面有一根楔形键，和画图板导出的写法一样。
+    然后把楔形键反过来、或者去掉，各校验一次。
+    为什么重要：画图板以前画不出手性，要单一对映体的目标分子只能粘贴带 @ 的 SMILES（2026-10-24 Anna 提的）。
+    """
+    block = Chem.MolToMolBlock(Chem.MolFromSmiles("C[C@H](N)C(=O)O"))
+    assert " 1\n" in block or " 6\n" in block  # 确实有一根带立体标记的键
+    info = chem.validate_structure(block)
+    assert info.input_format == "mol" and info.stereo_labels == ["S"] and info.unspecified_stereocenters == 0
+    assert "class='note'" in info.svg  # 图上标了 (S)
+    # 实楔键和虚楔键对调：另一个对映体
+    flipped = chem.validate_structure(_with_bond_stereo(block, lambda s: {1: 6, 6: 1}.get(s, s)))
+    assert flipped.stereo_labels == ["R"]
+    # 不画楔形键：构型没写，按外消旋处理，图上不标
+    plain = chem.validate_structure(_with_bond_stereo(block, lambda s: 0))
+    assert plain.stereo_labels == [] and plain.unspecified_stereocenters == 1 and "class='note'" not in plain.svg
+
+
+def test_3d_structure_keeps_the_configuration_and_is_the_same_every_time():
+    """3D 结构：带上氢原子，键长合理，手性构型和输入的一样；同一个结构每次算出来都一样。
+
+    保证的行为：chem.conformer_3d（RDKit 的 ETKDG 构象加 MMFF 优化，随机种子固定）。返回的 molblock 按三维坐标
+    重新判断构型，还是输入的那个；读不出来的结构抛 ValueError，文字是给用户看的句子。
+    怎么读：L-丙氨酸 C3H7NO2，加上氢一共 13 个原子。
+    为什么重要：R1 的“看 3D 结构”画的就是这些坐标；构型画反了的话，用户看到的是另一个对映体。
+    """
+    data = chem.conformer_3d("C[C@H](N)C(=O)O")
+    assert len(data["atoms"]) == 13 and sum(a["element"] == "H" for a in data["atoms"]) == 7
+    assert data["stereo_labels"] == ["S"] and data["unspecified_stereocenters"] == 0
+    # 第一根键是甲基碳和手性碳之间的 C–C 单键，约 1.5 埃
+    first = data["bonds"][0]
+    a, b = data["atoms"][first["a"]], data["atoms"][first["b"]]
+    assert first["order"] == 1 and 1.45 < ((a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2 + (a["z"] - b["z"]) ** 2) ** 0.5 < 1.6
+    # 按三维坐标重新判断构型：还是 L-丙氨酸
+    mol = Chem.MolFromMolBlock(data["molblock"], removeHs=False)
+    Chem.AssignStereochemistryFrom3D(mol)
+    assert Chem.MolToSmiles(Chem.RemoveHs(mol)) == Chem.MolToSmiles(Chem.MolFromSmiles("C[C@H](N)C(=O)O"))
+    assert chem.conformer_3d("C[C@H](N)C(=O)O")["atoms"] == data["atoms"]
+    with pytest.raises(ValueError, match="无法识别"):
+        chem.conformer_3d("C1CC")
 
 
 def test_invalid_structures_explain_what_is_wrong():

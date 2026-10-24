@@ -327,6 +327,11 @@ def test_structure_endpoints(client, account):
     by_alias = client.get("/api/structures/lookup", headers=headers, params={"q": "ibuprofen"}).json()
     assert by_alias["candidates"][0]["cas"] == "15687-27-1"
 
+    # 3D 结构：L-丙氨酸加上氢一共 13 个原子，构型是 S，另带一份三维的 MOL 文本；读不出来的结构是 422
+    three_d = client.get("/api/structures/3d", headers=headers, params={"smiles": "C[C@H](N)C(=O)O"}).json()
+    assert len(three_d["atoms"]) == 13 and three_d["stereo_labels"] == ["S"] and "M  END" in three_d["molblock"]
+    assert client.get("/api/structures/3d", headers=headers, params={"smiles": "C1CC"}).status_code == 422
+
     # 画一个苯环，指定图的宽和高。返回的是图片：Content-Type 是 image/svg+xml，内容是 SVG 文本
     picture = client.get("/api/structures/depict", headers=headers, params={"smiles": "c1ccccc1", "width": 100, "height": 80})
     assert picture.headers["content-type"].startswith("image/svg+xml") and b"<svg" in picture.content
