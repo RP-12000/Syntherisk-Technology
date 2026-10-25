@@ -54,6 +54,7 @@ import re
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Iterator
+from urllib.parse import unquote
 
 from sqlalchemy import delete, insert, or_, select, update
 
@@ -491,6 +492,10 @@ def load_catalog(
 # ---------------------------------------------------------------- 统计
 
 
+# 像 DOI 的写法：10. 开头，4–9 位数字的前缀，斜杠，后面没有空白
+_DOI_PATTERN = re.compile(r"^10\.\d{4,9}/\S+$")
+
+
 def fill_literature_metadata(
     ctx: AppContext,
     client: LiteratureClient,
@@ -503,7 +508,8 @@ def fill_literature_metadata(
 
     期刊数据（比如 academic13k）只有 DOI 和反应式，证据卡上显示不出论文的年份；补上以后，
     新做的分析里每条期刊先例都带着年份和题目。同一个 DOI 只查一次，查到的写进这个 DOI 的全部先例行，
-    只填空着的列，不覆盖已有的。
+    只填空着的列，不覆盖已有的。原数据里写坏的 DOI（斜杠转义成 %2F、末尾多一个句点）查之前修一下；
+    根本不像 DOI 的（不是 “10.” 开头加斜杠）不去问，算查不到。
     参数：
         ctx       运行时上下文（数据库会话）。
         client    文献信息的客户端（external.LiteratureClient）；命令行建一个真的，测试传假传输层的。
@@ -532,8 +538,14 @@ def fill_literature_metadata(
         dois = [doi for doi in session.scalars(query.limit(limit) if limit else query)]
         stats["dois"] = len(dois)
         for done, doi in enumerate(dois, 1):
+            # 原数据里个别 DOI 写坏了：斜杠被转义成 %2F、末尾多了一个句点，查之前修一下（写回时仍按原样匹配）；
+            # 还有几条根本不是 DOI（是报告名之类），不去问，算查不到
+            lookup = unquote(doi).strip().rstrip(".")
+            if not _DOI_PATTERN.match(lookup):
+                stats["missing"] += 1
+                continue
             try:
-                info = client.by_doi(doi)
+                info = client.by_doi(lookup)
             except ExternalServiceError as exc:
                 stats["stopped_at"], stats["error"] = doi, str(exc)
                 break

@@ -122,7 +122,14 @@ from sqlalchemy import select, update
 
 from syntherisk import cli, loaders, models
 from syntherisk.context import build_context
-from syntherisk.external import ExternalServiceError, PubChemClient, collect_ghs, is_cas_number, parse_ghs_codes
+from syntherisk.external import (
+    ExternalServiceError,
+    LiteratureClient,
+    PubChemClient,
+    collect_ghs,
+    is_cas_number,
+    parse_ghs_codes,
+)
 from syntherisk.modules import aizynth_bridge, m03_retrosynthesis
 from syntherisk.modules import m01_structure as chem
 from syntherisk.modules.m03_retrosynthesis import AiZynthEngine, EngineError, SearchRequest, SearchResult, build_engine
@@ -1560,6 +1567,11 @@ def test_fill_literature_adds_years_and_titles_to_journal_precedents_by_doi(ctx,
         session.add(precedent_from_reaction("CC(=O)Cl.CO>>COC(C)=O", source="academic13k", doc_type="journal",
                                             document_id="10.1000/missing", doi="10.1000/missing"))
         session.add(precedent_from_reaction("CC(=O)O.CO>>COC(C)=O", source="uspto", document_id="US0000001"))
+        # 原数据里写坏的两种：斜杠转义成 %2F、末尾多一个句点（查的时候修成 10.1000/a）；根本不是 DOI 的（不去问）
+        session.add(precedent_from_reaction("CC(=O)O.CCCO>>CCCOC(C)=O", source="academic13k", doc_type="journal",
+                                            document_id="10.1000%2Fa.", doi="10.1000%2Fa."))
+        session.add(precedent_from_reaction("CC(=O)O.CC(C)O>>CC(C)OC(C)=O", source="academic13k", doc_type="journal",
+                                            document_id="Office of Naval Research 1989", doi="Office of Naval Research 1989"))
         session.commit()
 
     class StubLiterature:
@@ -1574,16 +1586,18 @@ def test_fill_literature_adds_years_and_titles_to_journal_precedents_by_doi(ctx,
 
     stub = StubLiterature()
     cli.cmd_fill_literature(ctx, argparse.Namespace(source="academic13k", limit=None), client=stub)
-    # 两个 DOI 各问一次；没有 DOI 的专利不问
-    assert stub.asked == ["10.1000/a", "10.1000/missing"]
-    assert "查了 2 个 DOI，查到 1 个，两边都没有 1 个，改了 3 行" in capsys.readouterr().out
+    # 每个 DOI 问一次（写坏的那个修好了再问）；不是 DOI 的、没有 DOI 的专利都不问
+    assert stub.asked == ["10.1000/a", "10.1000/a", "10.1000/missing"]
+    assert "查了 4 个 DOI，查到 2 个，两边都没有 2 个，改了 5 行" in capsys.readouterr().out
     with ctx.session_factory() as session:
         # 按放进去的顺序（id）取出四行的 DOI、年份、题目
         rows = [(row.doi, row.year, row.title) for row in
                 session.scalars(select(models.ReactionPrecedent).order_by(models.ReactionPrecedent.id))]
-    # 10.1000/a 的两行都补上了题目；原来空着年份的那行补成 2012，已有的 2010 不动。查不到的和专利都没动
+    # 10.1000/a 的两行都补上了题目；原来空着年份的那行补成 2012，已有的 2010 不动。查不到的、专利、不是 DOI 的都没动；
+    # 写坏的那个 DOI 按修好的查到了，写回它自己那一行
     assert rows == [("10.1000/a", 2012, "Esterification in situ"), ("10.1000/a", 2010, "Esterification in situ"),
-                    ("10.1000/missing", None, None), (None, None, None)]
+                    ("10.1000/missing", None, None), (None, None, None),
+                    ("10.1000%2Fa.", 2012, "Esterification in situ"), ("Office of Naval Research 1989", None, None)]
 
     # 接口出错：停在出错的那个 DOI，补好的不丢。10.1000/a 已经补全，不会再被选中，所以只问 10.1000/missing
     class Broken:
@@ -1591,7 +1605,17 @@ def test_fill_literature_adds_years_and_titles_to_journal_precedents_by_doi(ctx,
             raise ExternalServiceError("请求超时")
 
     stats = loaders.fill_literature_metadata(ctx, Broken(), progress=lambda _m: None)
-    assert stats["dois"] == 1 and stats["stopped_at"] == "10.1000/missing" and stats["error"] == "请求超时"
+    assert stats["dois"] == 2 and stats["stopped_at"] == "10.1000/missing" and stats["error"] == "请求超时"
+
+    # 真的文献客户端碰到 Crossref 回 301（改过号的 DOI，比如 ChemRxiv 的旧 DOI）时跟着跳过去，不算出错。
+    # 以前不跟，补 academic13k 的年份时停在了第一个 ChemRxiv 的 DOI 上（2026-10-24）
+    def crossref(request):
+        if request.url.path.endswith("10.33774/chemrxiv-old"):
+            return httpx.Response(301, headers={"Location": "https://api.crossref.org/works/10.26434/chemrxiv-new"})
+        return httpx.Response(200, json={"message": {"title": ["Moved paper"], "issued": {"date-parts": [[2021, 3]]}}})
+
+    moved = LiteratureClient(transport=httpx.MockTransport(crossref)).by_doi("10.33774/chemrxiv-old")
+    assert moved["year"] == 2021 and moved["title"] == "Moved paper"
 
 
 def test_journal_reactions_written_as_doi_and_smiles_are_loaded_as_journal_articles(ctx, tmp_path):

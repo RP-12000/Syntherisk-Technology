@@ -143,19 +143,23 @@ class _ThrottledClient:
         _last          上一次请求发出去的时刻（time.monotonic() 的读数，只用来算时间差）。
     """
 
-    def __init__(self, timeout: float, min_interval: float, transport: httpx.BaseTransport | None = None):
+    def __init__(self, timeout: float, min_interval: float, transport: httpx.BaseTransport | None = None,
+                 follow_redirects: bool = False):
         """建一个 httpx 客户端，记下限速的间隔。不发请求。
 
         参数：
             timeout       一次请求最多等多少秒。超时按网络出错处理，会重试。
             min_interval  两次请求之间至少隔多少秒。0 表示不限速（测试里这样用）。
             transport     给 httpx 用的传输层。正常不传；测试里传 httpx.MockTransport，请求就不会真的发出去。
+            follow_redirects  对方回 301 / 302 时跟着跳过去。只有 LiteratureClient 打开：Crossref 对改过号的 DOI
+                          （比如 ChemRxiv 的旧 DOI）回 301；不跟的话按“别的状态码”算失败。
         谁在用：
             本文件的 PubChemClient、OpsinClient、LiteratureClient，各建一个。
         """
         # headers 里的 User-Agent 每次请求都会带上，让对方知道请求来自哪个程序
         self._http = httpx.Client(
-            timeout=timeout, transport=transport, headers={"User-Agent": "syntherisk-backend/0.1"}
+            timeout=timeout, transport=transport, headers={"User-Agent": "syntherisk-backend/0.1"},
+            follow_redirects=follow_redirects,
         )
         self._min_interval = min_interval
         self._interval = min_interval
@@ -657,7 +661,8 @@ class LiteratureClient:
             context.build_context()（配置里 ENABLE_LITERATURE_METADATA 打开时；默认是关的）。
         """
         self._email = contact_email
-        self._client = _ThrottledClient(timeout, 0.2, transport)
+        # Crossref 对改过号的 DOI 回 301（2026-10-24 补 academic13k 的年份时，ChemRxiv 的旧 DOI 都是这样），跟着跳过去
+        self._client = _ThrottledClient(timeout, 0.2, transport, follow_redirects=True)
 
     def by_doi(self, doi: str) -> dict[str, Any] | None:
         """按 DOI 查一篇文献的基本信息。
