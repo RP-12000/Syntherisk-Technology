@@ -249,6 +249,10 @@ ReactionSeek（Organic Syntheses 1921–2021 的约 4 千条反应，MIT 许可�
 它的结构是大模型从化合物名称换算的，随机抽查 14 条有 4 条主原料或产物是错的，按原子守恒和结构相似度过滤以后仍有约五分之一的产物不对。
 `data\data_sources.toml` 里把它登记成不允许导入。
 
+## 部署到服务器
+
+Vultr 上的一键安装脚本和操作步骤见 [deploy/README.md](deploy/README.md)：在服务器的网页控制台里输一行命令，脚本装好 Python 3.12、nginx、后端和前端，并从公开来源下载、导入先例库和 AiZynthFinder 模型。
+
 ## 还需要你来做的
 
 1. **大模型的 API key（M2、M11、M12）**。选定厂商后写进 `.env`。

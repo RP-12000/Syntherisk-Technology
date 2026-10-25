@@ -1,0 +1,2 @@
+# 部署脚本在 Linux 上运行，仓库里和检出时都保持 LF 换行
+*.sh text eol=lf
