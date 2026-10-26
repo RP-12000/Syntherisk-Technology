@@ -170,9 +170,9 @@ class User(Base):
 
     # 用户编号。登录令牌里的 sub 字段就是它
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    # 登录邮箱，存之前统一转成小写、去掉两头空格；全库唯一。
-    # 320 是通常引用的邮箱地址长度上限（@ 前面 64 个字符 + @ + 域名 255 个字符）
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    # 登录用户名，存之前统一转成小写、去掉两头空格；全库唯一。2026-10-26 起登录改用用户名、不再要邮箱：
+    # 数据库里的列名仍然叫 email（旧库不用迁移，原来的邮箱就当用户名），代码里叫 username
+    username: Mapped[str] = mapped_column("email", String(320), unique=True, index=True)
     # 显示名，可以为空字符串
     display_name: Mapped[str] = mapped_column(String(200), default="")
     # 密码的哈希，形如 "scrypt$16384$8$1$<盐>$<哈希>"，不到 100 个字符

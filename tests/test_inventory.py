@@ -284,9 +284,9 @@ def test_inventory_is_encrypted_and_private_items_are_hidden_from_teammates(clie
 
     # 组长给组里的同学开一个账号（默认角色是普通成员），同学登录拿到自己的令牌
     member = client.post("/api/org/members", headers=account["headers"],
-                         json={"email": "labmate@example.com", "password": "another-password-1"})
+                         json={"username": "labmate@example.com", "password": "another-password-1"})
     assert member.status_code == 201
-    login = client.post("/api/auth/login", json={"email": "labmate@example.com", "password": "another-password-1"}).json()
+    login = client.post("/api/auth/login", json={"username": "labmate@example.com", "password": "another-password-1"}).json()
     mate = {"Authorization": f"Bearer {login['access_token']}"}
     # 默认全组可见：同学看得到组长加的那一条
     assert client.get("/api/inventory/summary", headers=mate).json() == {"count": 1}
@@ -298,10 +298,10 @@ def test_inventory_is_encrypted_and_private_items_are_hidden_from_teammates(clie
     assert client.get("/api/inventory/summary", headers=account["headers"]).json() == {"count": 1}
 
     # 别的课题组的人看不到这个组的库存
-    outsider = register(client, email="outsider@example.com", org="别的课题组")
+    outsider = register(client, username="outsider@example.com", org="别的课题组")
     assert client.get("/api/inventory/summary", headers=outsider["headers"]).json() == {"count": 0}
     # 普通成员不能给组里加人：403（没有权限）
-    assert client.post("/api/org/members", headers=mate, json={"email": "x@example.com", "password": "password-123"}).status_code == 403
+    assert client.post("/api/org/members", headers=mate, json={"username": "x@example.com", "password": "password-123"}).status_code == 403
 
 
 def test_inventory_only_mode_excludes_routes_until_materials_are_in_stock(client, account):

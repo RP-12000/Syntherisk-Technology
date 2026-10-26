@@ -90,20 +90,20 @@ def test_login_and_account_basics(client, account):
     # 健康检查不用带令牌
     assert client.get("/health").json()["status"] == "ok"
     me = client.get("/api/auth/me", headers=account["headers"]).json()
-    assert me["user"]["email"] == "anna@example.com" and me["org"]["name"] == "测试课题组" and me["role"] == "owner"
+    assert me["user"]["username"] == "anna@example.com" and me["org"]["name"] == "测试课题组" and me["role"] == "owner"
 
     # 同一个邮箱，只是大小写不同，再注册一次
-    again = client.post("/api/auth/register", json={"email": "Anna@Example.com", "password": TEST_PASSWORD, "org_name": "x"})
+    again = client.post("/api/auth/register", json={"username": "Anna@Example.com", "password": TEST_PASSWORD, "org_name": "x"})
     assert again.status_code == 409  # 邮箱不分大小写
     # 换一个没用过的邮箱，但口令不够 8 位：请求体没通过格式检查
-    weak = client.post("/api/auth/register", json={"email": "b@example.com", "password": "short", "org_name": "x"})
+    weak = client.post("/api/auth/register", json={"username": "b@example.com", "password": "short", "org_name": "x"})
     assert weak.status_code == 422
 
     # 登录时邮箱写成大写也可以；返回的内容里带着课题组
-    login = client.post("/api/auth/login", json={"email": "ANNA@example.com", "password": TEST_PASSWORD})
+    login = client.post("/api/auth/login", json={"username": "ANNA@example.com", "password": TEST_PASSWORD})
     assert login.status_code == 200 and login.json()["org"]["name"] == "测试课题组"
     # 口令不对：401
-    assert client.post("/api/auth/login", json={"email": "anna@example.com", "password": "wrong-password"}).status_code == 401
+    assert client.post("/api/auth/login", json={"username": "anna@example.com", "password": "wrong-password"}).status_code == 401
     # 令牌不是后端签发的：401
     assert client.get("/api/auth/me", headers={"Authorization": "Bearer not-a-token"}).status_code == 401
     # 课题组里现在只有注册的这一个人，角色是 owner
@@ -145,7 +145,7 @@ def test_projects_and_history(client, account):
     assert listed == []  # 另一个项目下没有分析
 
     # 另一个课题组的账号：看不到这个项目的历史
-    other = register(client, email="other@example.com", org="隔壁课题组")
+    other = register(client, username="other@example.com", org="隔壁课题组")
     assert client.get(f"/api/projects/{account['project_id']}/history", headers=other["headers"]).status_code == 404
     # 也不能把分析提交到别人的项目里：对他来说这个项目不存在
     not_mine = client.post("/api/analyses", headers=other["headers"],
@@ -177,7 +177,7 @@ def test_draft_is_saved_updated_and_removed_once_the_analysis_starts(client, acc
     assert [d["id"] for d in client.get("/api/drafts", headers=account["headers"]).json()] == [draft["id"]]
 
     # 另一个课题组的人去改这份草稿：404
-    other = register(client, email="other@example.com", org="隔壁课题组")
+    other = register(client, username="other@example.com", org="隔壁课题组")
     assert client.put(f"/api/drafts/{draft['id']}", headers=other["headers"], json={"payload": {}}).status_code == 404
 
     # 用这份草稿开始分析：请求里带 draft_id。202 表示任务已经接受
@@ -231,8 +231,8 @@ def test_team_presets_for_constraints_and_weights(client, account):
 
     # 组里的同学也能用
     # 组长（account）给同学开一个账号，同学登录以后拿到自己的令牌，用它去读约束预设
-    client.post("/api/org/members", headers=account["headers"], json={"email": "mate@example.com", "password": "another-password-1"})
-    mate = client.post("/api/auth/login", json={"email": "mate@example.com", "password": "another-password-1"}).json()
+    client.post("/api/org/members", headers=account["headers"], json={"username": "mate@example.com", "password": "another-password-1"})
+    mate = client.post("/api/auth/login", json={"username": "mate@example.com", "password": "another-password-1"}).json()
     mine = client.get("/api/presets", headers={"Authorization": f"Bearer {mate['access_token']}"}, params={"kind": "constraints"}).json()
     assert [p["name"] for p in mine] == ["课题组默认"]
 
@@ -650,7 +650,7 @@ def test_command_line_tools(client, account, ctx, monkeypatch, capsys, tmp_path)
     cli.main(["seed-demo"])
     assert "已经存在" in capsys.readouterr().out
     # 用演示账号走接口登录，确认它真的能用，库存里是 8 种
-    demo = client.post("/api/auth/login", json={"email": "demo@example.com", "password": TEST_PASSWORD}).json()
+    demo = client.post("/api/auth/login", json={"username": "demo@example.com", "password": TEST_PASSWORD}).json()
     headers = {"Authorization": f"Bearer {demo['access_token']}"}
     assert client.get("/api/inventory/summary", headers=headers).json() == {"count": 8}
 

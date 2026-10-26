@@ -91,7 +91,7 @@ def _token_response(ctx: AppContext, user: models.User, org: models.Organization
         字典：
             access_token  登录令牌（JWT）。之后每个请求都放在请求头里：Authorization: Bearer <access_token>
             token_type    固定是 "bearer"
-            user          {"id": 用户编号, "email": 邮箱, "display_name": 显示的名字}
+            user          {"id": 用户编号, "username": 用户名, "display_name": 显示的名字}
             org           {"id": 课题组编号, "name": 课题组名}
             role          角色
     副作用：
@@ -107,7 +107,7 @@ def _token_response(ctx: AppContext, user: models.User, org: models.Organization
         "access_token": token,
         # token_type 是 OAuth2 的习惯写法：告诉调用方这个令牌要放在请求头 “Authorization: Bearer ” 的后面
         "token_type": "bearer",
-        "user": {"id": user.id, "email": user.email, "display_name": user.display_name},
+        "user": {"id": user.id, "username": user.username, "display_name": user.display_name},
         "org": {"id": org.id, "name": org.name},
         "role": role,
     }
@@ -134,13 +134,13 @@ def register(body: schemas.RegisterRequest, db: Session = Depends(get_db), ctx: 
     """
     # 实现：往 organizations、users、memberships、projects 四张表各写一行，一次提交。
     # 邮箱统一转成小写再存、再比较，所以 Anna@Example.com 和 anna@example.com 是同一个账号
-    email = body.email.strip().lower()
+    username = body.username.strip().lower()
     # db.scalar(查询)：只取结果第一行的第一列。这里查的是 id，查不到就是 None
-    if db.scalar(select(models.User.id).where(models.User.email == email)):
-        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这个邮箱已经注册过了", "This email is already registered"))
+    if db.scalar(select(models.User.id).where(models.User.username == username)):
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这个用户名已经有人用了", "This username is already taken"))
     # 建课题组和用户。密码不存原文，存的是 scrypt 算出来的哈希值（security.hash_password）
     org = models.Organization(name=body.org_name.strip(), settings={})
-    user = models.User(email=email, display_name=body.display_name.strip(), password_hash=hash_password(body.password))
+    user = models.User(username=username, display_name=body.display_name.strip(), password_hash=hash_password(body.password))
     db.add_all([org, user])
     # flush：把上面两行先发给数据库（还没提交）。这一步之后 org.id 和 user.id 才有值，下面两行要用
     db.flush()
@@ -154,20 +154,20 @@ def register(body: schemas.RegisterRequest, db: Session = Depends(get_db), ctx: 
 
 @router.post("/auth/login", tags=["账号"])
 def login(body: schemas.LoginRequest, db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)):
-    """登录：用邮箱和密码换取登录令牌。
+    """登录：用用户名和密码换取登录令牌。
 
     不需要登录。请求体见 `LoginRequest`。
 
     成功返回 200，内容同注册接口：`access_token`、`token_type`、`user`、`org`、`role`。
     令牌有有效期（默认 12 小时），过期以后接口返回 401，需要重新登录。
 
-    出错：401 邮箱或密码不对（账号被停用时也是这个提示）；403 这个账号不属于任何课题组。
+    出错：401 用户名或密码不对（账号被停用时也是这个提示）；403 这个账号不属于任何课题组。
     """
     # 实现：只读 users、memberships、organizations 三张表，不写。
     # 邮箱转成小写去查。账号不存在、被停用、密码不对，三种情况返回同一句话，不透露是哪一种
-    user = db.scalars(select(models.User).where(models.User.email == body.email.strip().lower())).first()
+    user = db.scalars(select(models.User).where(models.User.username == body.username.strip().lower())).first()
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, i18n.tr("邮箱或密码不对", "Incorrect email or password"))
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, i18n.tr("用户名或密码不对", "Incorrect username or password"))
     # 取这个人所在的课题组（取查到的第一条成员关系）。
     # 注册和加成员都不接受已经注册过的邮箱，所以通过这些接口建的账号只会属于一个课题组
     membership = db.scalars(select(models.Membership).where(models.Membership.user_id == user.id)).first()
@@ -192,7 +192,7 @@ def me(principal: Principal = Depends(get_principal)):
     # org.settings 现在只有一个会被后端读的键：inventory_default_visibility（新加的库存默认给谁看，
     # 见 m04_availability.InventoryService.upsert）；目前没有接口能修改 settings
     return {
-        "user": {"id": principal.user.id, "email": principal.user.email, "display_name": principal.user.display_name},
+        "user": {"id": principal.user.id, "username": principal.user.username, "display_name": principal.user.display_name},
         "org": {"id": principal.org.id, "name": principal.org.name, "settings": principal.org.settings or {}},
         "role": principal.role,
     }
@@ -213,7 +213,7 @@ def list_members(principal: Principal = Depends(get_principal), db: Session = De
     ).all()
     # 把每一行拆成 membership 和 user 两个变量，挑出要返回的字段；密码的哈希值不返回
     return [
-        {"user_id": user.id, "email": user.email, "display_name": user.display_name, "role": membership.role}
+        {"user_id": user.id, "username": user.username, "display_name": user.display_name, "role": membership.role}
         for membership, user in rows
     ]
 
@@ -231,16 +231,16 @@ def add_member(body: schemas.MemberCreate, principal: Principal = Depends(requir
     """
     # 实现：权限由依赖 require_admin 检查（不是管理员时在那里就返回 403 了）。
     # 往 users、memberships 两张表各写一行；和注册的区别是不建新课题组，而是加入管理员所在的这个
-    email = body.email.strip().lower()
-    if db.scalar(select(models.User.id).where(models.User.email == email)):
-        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这个邮箱已经注册过了", "This email is already registered"))
-    user = models.User(email=email, display_name=body.display_name.strip(), password_hash=hash_password(body.password))
+    username = body.username.strip().lower()
+    if db.scalar(select(models.User.id).where(models.User.username == username)):
+        raise HTTPException(status.HTTP_409_CONFLICT, i18n.tr("这个用户名已经有人用了", "This username is already taken"))
+    user = models.User(username=username, display_name=body.display_name.strip(), password_hash=hash_password(body.password))
     db.add(user)
     # flush 以后 user.id 才有值，建成员关系要用
     db.flush()
     db.add(models.Membership(org_id=principal.org_id, user_id=user.id, role=body.role))
     db.commit()
-    return {"user_id": user.id, "email": user.email, "display_name": user.display_name, "role": body.role}
+    return {"user_id": user.id, "username": user.username, "display_name": user.display_name, "role": body.role}
 
 
 # ---------------------------------------------------------------- 项目

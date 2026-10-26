@@ -76,15 +76,8 @@ def _invalid(zh: str, en: str) -> ValueError:
     i18n.register(f"Value error, {zh}", f"Value error, {en}")
     return ValueError(zh)
 
-# 邮箱格式的正则表达式，只做最粗的检查，逐段读是：
-#   ^          从字符串开头
-#   [^@\s]+    一个以上“既不是 @、也不是空白”的字符（@ 前面的部分）
-#   @          一个 @
-#   [^@\s]+    @ 后面的部分……
-#   \.         ……里面要有一个点……
-#   [^@\s]+$   ……点的后面还要有字符，一直到字符串结尾
-# 也就是“某某@某某.某某”，中间不能有空格、不能有第二个 @。它不验证这个邮箱真的存在。
-_EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+# 用户名：一个以上不是空白的字符（中间不能有空格），最长 200 个字符。旧账号的邮箱也符合这条规则
+_USERNAME = r"^\S+$"
 
 
 # ---------------------------------------------------------------- M0
@@ -93,15 +86,15 @@ _EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 class RegisterRequest(BaseModel):
     """注册账号的请求体（`POST /api/auth/register`）。注册的同时会新建一个课题组。
 
-    - `email`：登录用的邮箱，格式要像“某某@某某.某某”，最长 320 个字符。不分大小写，保存时转成小写
+    - `username`：登录用的用户名，中间不能有空格，最长 200 个字符。不分大小写，保存时转成小写
     - `password`：密码，8–200 个字符。后端只保存它的哈希值，不保存原文
     - `display_name`：显示的名字，可以不填，最长 200 个字符
     - `org_name`：课题组的名字，必填，1–200 个字符
     """
 
-    # email 的 320、display_name 和 org_name 的 200，分别和 users.email、users.display_name、
+    # username、display_name 和 org_name 的 200 不超过 users.email（用户名存在这一列）、users.display_name、
     # organizations.name 三列的长度一致（见 syntherisk/models.py）
-    email: str = Field(pattern=_EMAIL, max_length=320)
+    username: str = Field(pattern=_USERNAME, max_length=200)
     password: str = Field(min_length=8, max_length=200)
     display_name: str = Field(default="", max_length=200)
     org_name: str = Field(min_length=1, max_length=200)
@@ -110,26 +103,26 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     """登录的请求体（`POST /api/auth/login`）。
 
-    - `email`：注册时用的邮箱，不分大小写
+    - `username`：用户名，不分大小写
     - `password`：密码
 
-    这里不检查格式和长度：邮箱或密码不对时，接口统一返回 401“邮箱或密码不对”。
+    这里不检查格式和长度：用户名或密码不对时，接口统一返回 401“用户名或密码不对”。
     """
 
-    email: str
+    username: str
     password: str
 
 
 class MemberCreate(BaseModel):
     """管理员给组里的同学开账号的请求体（`POST /api/org/members`）。
 
-    - `email`：新成员登录用的邮箱，格式和长度的要求同注册；已经注册过的邮箱不能再用
+    - `username`：新成员登录用的用户名，格式和长度的要求同注册；已经用过的用户名不能再用
     - `password`：管理员给他设的密码，8–200 个字符
     - `display_name`：显示的名字，可以不填，最长 200 个字符
     - `role`：角色。`member` 普通成员（默认）；`admin` 管理员，可以再给别人开账号
     """
 
-    email: str = Field(pattern=_EMAIL, max_length=320)
+    username: str = Field(pattern=_USERNAME, max_length=200)
     password: str = Field(min_length=8, max_length=200)
     display_name: str = Field(default="", max_length=200)
     # 这里选不了 owner：owner 只在建课题组的时候产生（注册接口，或者命令行的 seed-demo）

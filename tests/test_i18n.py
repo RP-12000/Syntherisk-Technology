@@ -372,9 +372,9 @@ def test_errors_follow_the_language(client, account):
     assert detail("POST", f"{base}/exclusions", json=body) == (409, "已经排除过了")
     assert detail("POST", f"{base}/exclusions", lang="en", json=body) == (409, "Already excluded")
     # 注册一个已经有的邮箱（这个接口不用登录）
-    again = {"email": "anna@example.com", "password": "another-password-1", "display_name": "A", "org_name": "B"}
-    assert detail("POST", "/api/auth/register", auth=False, json=again) == (409, "这个邮箱已经注册过了")
-    assert detail("POST", "/api/auth/register", auth=False, lang="en", json=again) == (409, "This email is already registered")
+    again = {"username": "anna@example.com", "password": "another-password-1", "display_name": "A", "org_name": "B"}
+    assert detail("POST", "/api/auth/register", auth=False, json=again) == (409, "这个用户名已经有人用了")
+    assert detail("POST", "/api/auth/register", auth=False, lang="en", json=again) == (409, "This username is already taken")
 
     # ---- 422：接口自己抛的 ----
     bad = {"type": "substance", "smiles": "C1CC"}  # 环没有闭合，读不出来

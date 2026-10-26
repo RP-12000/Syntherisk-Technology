@@ -665,7 +665,7 @@ def test_another_group_cannot_see_or_touch_this_groups_analysis(client, account)
     为什么重要：README 写明数据按课题组隔离，目标结构和分析结果在应用层加密以后再存。
     """
     analysis = start_analysis(client, account)
-    other = register(client, email="other@example.com", org="隔壁课题组")
+    other = register(client, username="other@example.com", org="隔壁课题组")
     # 四个接口各试一次：看状态、看结果页、看证据卡、取消
     for method, path in [
         ("get", f"/api/analyses/{analysis['id']}"),

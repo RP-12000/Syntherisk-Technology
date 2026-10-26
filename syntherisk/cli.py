@@ -126,11 +126,11 @@ def cmd_seed_demo(ctx: AppContext, _args) -> None:
     email = settings.demo_user_email.strip().lower()
     with ctx.session_factory() as session:
         # 只查 id 这一列：查得到就说明这个邮箱已经有账号了
-        if session.scalar(select(models.User.id).where(models.User.email == email)):
+        if session.scalar(select(models.User.id).where(models.User.username == email)):
             _print(f"账号 {email} 已经存在，没有改动。")
             return
         org = models.Organization(name=settings.demo_org_name, settings={})
-        user = models.User(email=email, display_name="演示用户", password_hash=hash_password(settings.demo_user_password))
+        user = models.User(username=email, display_name="演示用户", password_hash=hash_password(settings.demo_user_password))
         session.add_all([org, user])
         # flush：把上面两行先发给数据库（还没提交），这样 org.id 和 user.id 才有值，下面建关联的行要用
         session.flush()

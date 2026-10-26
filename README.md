@@ -103,7 +103,7 @@ PPT 写明的：FastAPI、PostgreSQL、Redis + Worker + SSE、AiZynthFinder、RD
   表是启动时自动建的；现在没有迁移工具，以后要改已有的表结构时再加（比如 Alembic）。
 - **任务队列**：自己写的一个很薄的队列（`taskqueue.py`）。本地在进程内跑；设 `QUEUE_BACKEND=redis` 后由 `python -m syntherisk.worker` 从 Redis 取任务。没有用 Celery 或 RQ，因为它们在 Windows 上不好用。
 - **进度推送**：Worker 把进度写进数据库，SSE 接口从库里读，所以 API 和 Worker 分开部署也能推进度。
-- **登录**：邮箱 + 密码，密码用 scrypt 哈希，登录后发 JWT。
+- **登录**：用户名 + 密码（2026-10-26 起不再用邮箱），密码用 scrypt 哈希，登录后发 JWT。
 - **加密**：客户库存、目标结构、分析结果、实验回填、报告文件都在应用层加密（Fernet）后再存。按结构匹配库存用的是“盲索引”，不用解密整张表。
 - **大模型**：`syntherisk/llm/` 是唯一知道厂商的地方。Claude 走 Anthropic 官方 SDK，其他厂商走兼容 OpenAI 的 HTTP 接口。换厂商只改 `.env`。
 - **报告**：ReportLab（PDF）、python-docx（Word）、openpyxl（Excel）。

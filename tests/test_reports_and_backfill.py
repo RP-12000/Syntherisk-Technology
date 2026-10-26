@@ -215,7 +215,7 @@ def test_reports_in_three_formats_are_saved_to_project_history(client, account):
     assert history["analyses"][0]["best_route"]["name"]
 
     # 别的课题组拿着同一个下载地址：404
-    other = register(client, email="other@example.com", org="隔壁课题组")
+    other = register(client, username="other@example.com", org="隔壁课题组")
     assert client.get(pdf.json()["download_url"], headers=other["headers"]).status_code == 404
     # 这次分析只有 r1、r2、r3 三条路线，没有 r9：404
     assert client.post(url, headers=account["headers"], json={"route_id": "r9"}).status_code == 404
@@ -354,5 +354,5 @@ def test_experiment_attachments_are_stored_encrypted(client, account, ctx):
     rejected = client.post(f"/api/experiments/{record['id']}/attachments", headers=account["headers"],
                            files={"file": ("run.exe", b"MZ", "application/x-msdownload")})
     assert rejected.status_code == 415
-    other = register(client, email="other@example.com", org="隔壁课题组")
+    other = register(client, username="other@example.com", org="隔壁课题组")
     assert client.get(uploaded.json()["download_url"], headers=other["headers"]).status_code == 404

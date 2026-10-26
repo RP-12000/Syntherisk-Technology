@@ -182,14 +182,14 @@ def client(ctx) -> TestClient:
         yield test_client
 
 
-def register(client: TestClient, email: str = "anna@example.com", org: str = "测试课题组") -> dict:
+def register(client: TestClient, username: str = "anna@example.com", org: str = "测试课题组") -> dict:
     """通过注册接口建一个账号（同时建一个课题组和它的“默认项目”），返回后面调接口要用的东西。
 
     走的是真实的接口 POST /api/auth/register（syntherisk/api/core.py 的 register），不是直接往数据库里写，
     所以得到的令牌、课题组、项目，和前端注册以后拿到的一样。
     参数：
         client  测试客户端。
-        email   登录邮箱。同一个测试里需要第二个账号时（比如验证“别的课题组看不到我的数据”），换一个邮箱再调一次。
+        username  登录用户名。同一个测试里需要第二个账号时（比如验证“别的课题组看不到我的数据”），换一个再调一次。
         org     课题组的名字。每注册一次就新建一个课题组，注册的人是组长（owner）。
     返回一个字典：
         headers      {"Authorization": "Bearer <令牌>"}。之后每个要登录的请求都带上它：headers=account["headers"]
@@ -203,7 +203,7 @@ def register(client: TestClient, email: str = "anna@example.com", org: str = "�
     # 请求体见 api/schemas.py 的 RegisterRequest：display_name 是显示的名字，org_name 是要新建的课题组的名字
     response = client.post(
         "/api/auth/register",
-        json={"email": email, "password": TEST_PASSWORD, "display_name": "测试", "org_name": org},
+        json={"username": username, "password": TEST_PASSWORD, "display_name": "测试", "org_name": org},
     )
     # assert 条件, 说明：条件不成立时，逗号后面的内容会显示在失败信息里。这里显示的是接口返回的原文
     assert response.status_code == 201, response.text
