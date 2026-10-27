@@ -134,7 +134,7 @@ class AgreementAccept(BaseModel):
     """同意内测协议的请求体（`POST /api/agreement/accept`）。前三项原样带回 `GET /api/agreement` 给的值。
 
     - `version`：同意的是哪一版，比如 `V0.5`
-    - `language`：看的是哪种语言的那一份（`zh`、`en`）
+    - `language`：看的是哪种语言的那一份（`zh`、`en`、`fr`）
     - `sha256`：那一份内容的哈希。和服务器上的对不上（协议刚改过）时返回 409，要重新读
     - `checked`：勾了的选项（协议里 `checkboxes` 的 `key`），每一项都要勾上
     """

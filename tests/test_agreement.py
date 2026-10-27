@@ -18,7 +18,8 @@
     test_nothing_works_until_the_agreement_is_accepted
     test_accepting_checks_version_hash_and_every_box
     test_acceptance_is_recorded_with_the_text_and_survives_a_new_version
-    test_french_falls_back_to_english_until_there_is_a_french_text
+    test_french_interface_gets_the_french_agreement
+    test_a_missing_language_falls_back_to_english
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from syntherisk.agreement import Agreement, digest
+from syntherisk.agreement import digest
 from tests.conftest import TEST_PASSWORD, accept_agreement
 
 
@@ -38,22 +39,19 @@ def _register_only(client, username: str = "new@example.com") -> dict:
 
 
 def test_the_agreement_file_has_the_same_clauses_in_every_language(ctx):
-    """每种语言的协议条款编号一一对应：中文和英文都是 13 条 55 款，款号（1.1、1.2 …）的顺序完全一样。
-
-    以后加法语版，这个测试同样会查它。
-    """
+    """每种语言的协议条款编号一一对应：中、英、法都是 12 条 54 款，款号（1.1、1.2 …）的顺序完全一样。"""
     agreement = ctx.reference.agreement
-    assert {"zh", "en"} <= set(agreement.packages)
+    assert set(agreement.packages) == {"zh", "en", "fr"}
     numbering = {}
     for language, package in agreement.packages.items():
         paragraphs = package["full_text"].strip().split("\n\n")
         articles = [p for p in paragraphs if p.startswith("## ")]
         clauses = [m.group(0) for p in paragraphs if (m := re.match(r"^\d+\.\d+", p))]
         numbering[language] = (len(articles), clauses)
-        # 两个勾选项：同意协议、成年声明
-        assert [box["key"] for box in package["checkboxes"]] == ["accept", "adult"]
+        # 两个勾选项：同意协议、选择用这种语言订立合同
+        assert [box["key"] for box in package["checkboxes"]] == ["accept", "language"]
         assert len(package["summary"]) == 3
-    assert numbering["zh"][0] == 13 and len(numbering["zh"][1]) == 55
+    assert numbering["zh"][0] == 12 and len(numbering["zh"][1]) == 54
     assert all(value == numbering["zh"] for value in numbering.values())
 
 
@@ -76,7 +74,7 @@ def test_nothing_works_until_the_agreement_is_accepted(client):
     assert current["content"]["accept"] == "同意协议并进入内测"
     file = client.get("/api/agreement/file", headers=headers)
     assert file.status_code == 200 and file.headers["content-type"].startswith("text/plain")
-    assert "Syntherisk 内测使用与保密协议" in file.text and "第十三条" in file.text
+    assert "Syntherisk 内测使用与保密协议" in file.text and "第十二条" in file.text
 
     accept_agreement(client, headers)
     assert client.get("/api/auth/me", headers=headers).json()["agreement"]["accepted"] is True
@@ -87,7 +85,7 @@ def test_accepting_checks_version_hash_and_every_box(client):
     """版本或哈希对不上 409；少勾一项 422；没有这种语言 422。都不会留下同意记录。"""
     headers = _register_only(client)
     current = client.get("/api/agreement", headers={**headers, "X-Language": "en"}).json()
-    body = {"version": current["version"], "language": "en", "sha256": current["sha256"], "checked": ["accept", "adult"]}
+    body = {"version": current["version"], "language": "en", "sha256": current["sha256"], "checked": ["accept", "language"]}
 
     assert client.post("/api/agreement/accept", headers=headers, json={**body, "version": "V0.1"}).status_code == 409
     # 拿英文那份的哈希说自己同意的是中文版：对不上
@@ -98,7 +96,7 @@ def test_accepting_checks_version_hash_and_every_box(client):
 
     accepted = client.post("/api/agreement/accept", headers=headers, json=body)
     assert accepted.status_code == 201
-    assert [box["key"] for box in accepted.json()["checked"]] == ["accept", "adult"]
+    assert [box["key"] for box in accepted.json()["checked"]] == ["accept", "language"]
 
 
 def test_acceptance_is_recorded_with_the_text_and_survives_a_new_version(client, ctx):
@@ -126,17 +124,25 @@ def test_acceptance_is_recorded_with_the_text_and_survives_a_new_version(client,
         renewed = accept_agreement(client, headers)
         assert renewed["version"] == "V0.6" and renewed["sha256"] != record["sha256"]
         # 两条记录都在，旧的那条下载出来仍是旧的全文
-        assert [r["version"] for r in client.get("/api/agreement/acceptances", headers=headers).json()] == ["V0.6", "V0.5"]
+        assert [r["version"] for r in client.get("/api/agreement/acceptances", headers=headers).json()] == ["V0.6", old.version]
         assert "新加的一款" not in client.get(f"/api/agreement/acceptances/{record['id']}/file", headers=headers).text
         assert "新加的一款" in client.get(f"/api/agreement/acceptances/{renewed['id']}/file", headers=headers).text
     finally:
         ctx.reference.agreement = old
 
 
-def test_french_falls_back_to_english_until_there_is_a_french_text(client, ctx):
-    """法语界面：协议还没有法语版时给英文版，并说明要的是法语；同意记下的语言是英文。"""
+def test_french_interface_gets_the_french_agreement(client):
+    """法语界面拿到的是法语版协议，同意时记下的语言是法语。"""
     headers = _register_only(client)
     current = client.get("/api/agreement", headers={**headers, "X-Language": "fr"}).json()
-    assert current["requested_language"] == "fr" and current["language"] == "en"
-    assert current["content"]["accept"] == "Accept Agreement and Enter Beta"
-    assert isinstance(ctx.reference.agreement, Agreement) and "fr" not in ctx.reference.agreement.packages
+    assert current["requested_language"] == "fr" and current["language"] == "fr"
+    assert current["content"]["accept"] == "Accepter la Convention et accéder à l'essai"
+    accepted = client.post("/api/agreement/accept", headers=headers, json={
+        "version": current["version"], "language": "fr", "sha256": current["sha256"], "checked": ["accept", "language"]})
+    assert accepted.status_code == 201 and accepted.json()["language"] == "fr"
+
+
+def test_a_missing_language_falls_back_to_english(ctx):
+    """内容里没有的语言给英文版。"""
+    language, package = ctx.reference.agreement.package("de")
+    assert language == "en" and package["accept"] == "Accept Agreement and Enter Beta"

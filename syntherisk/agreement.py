@@ -29,14 +29,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# 每种语言的内容里必须有的键。summary 是三行 {label, text}；checkboxes 是勾选项 {key, label, text}，
+# 每种语言的内容里必须有的键。summary 是几行 {label, text}；checkboxes 是勾选项 {key, label, text}，
 # 每一项都要勾上才能同意；full_text 是协议全文，“## ”开头的行是条标题，其余每段一行、段与段之间空一行
 REQUIRED_KEYS = (
-    "eyebrow", "title", "intro", "summary", "read_full", "note", "checkboxes",
-    "guardian_link", "guardian_text", "accept", "decline", "footer", "full_title", "full_text",
+    "eyebrow", "title", "intro", "summary", "read_full", "checkboxes",
+    "accept", "decline", "footer", "full_title", "full_text",
 )
+# 可以没有的键：note（说明下面的一行小字）、guardian_link 和 guardian_text（未成年人怎么申请）。V0.5 有，V0.8 没有
+OPTIONAL_KEYS = ("note", "guardian_link", "guardian_text")
 
-# 没有某种语言的内容时用哪一种（现在只有中文和英文，法语界面先显示英文版）
+# 没有某种语言的内容时用哪一种（V0.8 起中、英、法三种都有）
 FALLBACK_LANGUAGE = "en"
 
 
@@ -138,9 +140,9 @@ def as_text(package: dict[str, Any], sha256: str, acceptance: dict[str, Any] | N
         lines += [f"{labels['record']}: {acceptance['id']}", ""]
     lines += [rule, labels["summary"], rule, package["title"], "", package["intro"], ""]
     lines += [f"{row['label']}: {row['text']}" for row in package["summary"]]
-    lines += ["", package["note"], ""]
+    lines += ["", package["note"], ""] if package.get("note") else [""]
     lines += [f"{box['label']}: {box['text']}" for box in package["checkboxes"]]
-    lines += ["", package["guardian_text"], ""]
+    lines += ["", package["guardian_text"], ""] if package.get("guardian_text") else [""]
     lines += [rule, labels["full"], rule, package["full_title"], ""]
     # 全文里 “## ” 开头的是条标题：去掉记号，前面空一行
     for paragraph in package["full_text"].strip().split("\n\n"):

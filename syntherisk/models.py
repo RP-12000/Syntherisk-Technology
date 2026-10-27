@@ -254,7 +254,7 @@ class AgreementAcceptance(Base):
     # 版本号和语言，和那份内容里的一样；require_agreement 按版本号查
     version: Mapped[str] = mapped_column(String(40))
     language: Mapped[str] = mapped_column(String(8))
-    # 勾了的选项，内容里 checkboxes 的 key，比如 ["accept", "adult"]。现在每一项都要勾上才能同意
+    # 勾了的选项，内容里 checkboxes 的 key，比如 ["accept", "language"]。现在每一项都要勾上才能同意
     checked: Mapped[list[str]] = mapped_column(JSON)
     # 同意的时间（服务器收到的时间，UTC）
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
