@@ -90,12 +90,12 @@ def _target_view(target: dict[str, Any]) -> dict[str, Any]:
         target  analysis.target（解密后的字典）。
     返回：
         中文请求：去掉以 _en 结尾的键，和以前的格式一样；
-        英文请求：原样返回，之后 i18n.localize() 会用 messages_en 顶替 messages，并把 messages_en 去掉
-        （字典里 "x_en" 顶替 "x" 是 localize 的约定）。
+        英文、法文请求：原样返回，之后 i18n.localize() 会用 messages_en（法文请求再翻成法文）顶替 messages，
+        并把 messages_en 去掉（字典里 "x_en" 顶替 "x" 是 localize 的约定）。
     谁在用：
         本文件的 analysis_view、analysis_list_item。
     """
-    if i18n.current_lang() == "en":
+    if i18n.current_lang() != "zh":
         return target
     return {key: value for key, value in target.items() if not key.endswith("_en")}
 

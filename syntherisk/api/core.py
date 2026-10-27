@@ -7,10 +7,11 @@
     D3   保存为团队预设                POST /api/presets
     B1 B8 B9 D1 前端自己重算要用的公式  GET  /api/scoring/config
 
-本文件的全部接口（main.py 挂载时统一加了前缀 /api；除注册、登录以外都要登录）：
+本文件的全部接口（main.py 挂载时统一加了前缀 /api；除注册、登录以外都要登录，
+除注册、登录、/api/auth/me 以外还要已经同意内测协议，见 api/agreement.py）：
     账号   POST   /api/auth/register           注册，同时建课题组和一个“默认项目”
            POST   /api/auth/login              登录，换取 access_token
-           GET    /api/auth/me                 当前登录的是谁
+           GET    /api/auth/me                 当前登录的是谁，同意了内测协议没有
            GET    /api/org/members             本课题组的成员
            POST   /api/org/members             管理员给同学开账号
     项目   GET    /api/projects                本课题组的项目
@@ -66,7 +67,7 @@ from sqlalchemy.orm import Session
 
 from syntherisk import i18n, models
 from syntherisk.api import schemas
-from syntherisk.api.deps import Principal, get_ctx, get_db, get_principal, load_project, require_admin
+from syntherisk.api.deps import Principal, get_ctx, get_db, get_principal, get_signed_in, load_project, require_admin
 from syntherisk.api.views import analysis_list_item, iso
 from syntherisk.constraints import SCALE_LABELS, STOCK_LABELS, Constraints
 from syntherisk.context import AppContext
@@ -177,24 +178,40 @@ def login(body: schemas.LoginRequest, db: Session = Depends(get_db), ctx: AppCon
 
 
 @router.get("/auth/me", tags=["账号"])
-def me(principal: Principal = Depends(get_principal)):
-    """当前登录的是谁：用户、课题组、角色。
+def me(principal: Principal = Depends(get_signed_in), db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)):
+    """当前登录的是谁：用户、课题组、角色，以及有没有同意当前版本的内测协议。
 
-    需要登录。带着令牌调它，可以确认这个令牌还有效，并拿到它对应的用户、课题组和角色。返回：
+    需要登录，不要求已经同意内测协议（前端靠它决定要不要弹出协议）。带着令牌调它，可以确认这个令牌还有效，
+    并拿到它对应的用户、课题组和角色。返回：
 
-    - `user`：`{id, email, display_name}`
+    - `user`：`{id, username, display_name}`
     - `org`：`{id, name, settings}`。`settings` 是课题组级别的设置，没有设置过时是空对象
     - `role`：`owner`、`admin` 或 `member`
+    - `agreement`：`{version, accepted, accepted_at, acceptance_id}`。`accepted` 是 false 时，别的接口都返回 403，
+      要先读 `GET /api/agreement` 并同意（见 api/agreement.py）
 
     出错：401 没登录，或者令牌已经失效。
     """
-    # 不查库：登录检查（get_principal）已经把用户和课题组读出来放在 principal 上了。
+    # 用户和课题组不用再查：登录检查（get_signed_in）已经读出来放在 principal 上了；只查一次同意记录。
     # org.settings 现在只有一个会被后端读的键：inventory_default_visibility（新加的库存默认给谁看，
     # 见 m04_availability.InventoryService.upsert）；目前没有接口能修改 settings
+    version = ctx.reference.agreement.version
+    accepted = db.scalars(
+        select(models.AgreementAcceptance)
+        .where(models.AgreementAcceptance.user_id == principal.user_id, models.AgreementAcceptance.version == version)
+        .order_by(models.AgreementAcceptance.accepted_at.desc())
+        .limit(1)
+    ).first()
     return {
         "user": {"id": principal.user.id, "username": principal.user.username, "display_name": principal.user.display_name},
         "org": {"id": principal.org.id, "name": principal.org.name, "settings": principal.org.settings or {}},
         "role": principal.role,
+        "agreement": {
+            "version": version,
+            "accepted": accepted is not None,
+            "accepted_at": iso(accepted.accepted_at) if accepted else None,
+            "acceptance_id": accepted.id if accepted else None,
+        },
     }
 
 

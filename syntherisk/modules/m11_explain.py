@@ -142,6 +142,21 @@ Rules you must follow:
 5. Write in English. If a name in the summary has no English form, keep it exactly as given."""
 
 
+def system_prompt(lang: str, chinese: str, english: str) -> str:
+    """按语言选系统提示词：中文用中文版；英文用英文版；法文用英文版，但要求用法文写。
+
+    法文没有单独写一版：英文版里“用英文写”的几处改成“用法文写”，再加一句数字照卡上的写法
+    （validate_sentences 按小数点认数字，法文习惯的小数逗号会让句子被当成数字没有依据而丢掉）。
+    谁在用：本文件的 Explainer.explain_step()、explain_route()；m12_qa.QuestionAnswerer.answer()。
+    """
+    if lang == "zh":
+        return chinese
+    if lang != "fr":
+        return english
+    french = english.replace("in English", "in French").replace("no English form", "no French form")
+    return french + "\nWrite every number exactly as it appears in the data you were given, with a decimal point."
+
+
 def _numbers(text: str) -> list[float]:
     """找出一段文字里的所有数字，按出现的先后返回（都转成 float）。
 
@@ -165,7 +180,7 @@ def model_facts(card: dict[str, Any]) -> dict[str, Any]:
         本文件的 Explainer.explain_step()；m12_qa.QuestionAnswerer.answer()。
     """
     lang = i18n.current_lang()
-    if lang == "en":
+    if lang != "zh":
         for hazard in card["hazards"]:
             for c in hazard["controlled"]:
                 i18n.tr("{jurisdiction} {list} {category}", "{jurisdiction} {list} {category}",
@@ -288,7 +303,7 @@ class Explainer:
                 # module="M11" 和两个 id 只用来记用量；schema_name 是给这个结构起的名字，有的厂商接口要求提供
                 response = self.llm.complete_json(
                     module="M11",
-                    system=STEP_SYSTEM_PROMPT_EN if lang == "en" else STEP_SYSTEM_PROMPT,
+                    system=system_prompt(lang, STEP_SYSTEM_PROMPT, STEP_SYSTEM_PROMPT_EN),
                     user=json.dumps(facts, ensure_ascii=False),
                     schema=SENTENCES_SCHEMA,
                     schema_name="step_explanation",
@@ -542,7 +557,7 @@ class Explainer:
             try:
                 # 和 explain_step() 一样：调模型、核对句子，有句子留下来就用
                 response = self.llm.complete_json(
-                    module="M11", system=ROUTE_SYSTEM_PROMPT_EN if lang == "en" else ROUTE_SYSTEM_PROMPT,
+                    module="M11", system=system_prompt(lang, ROUTE_SYSTEM_PROMPT, ROUTE_SYSTEM_PROMPT_EN),
                     user=json.dumps(facts, ensure_ascii=False),
                     schema=SENTENCES_SCHEMA, schema_name="route_summary", org_id=org_id, analysis_id=analysis_id,
                 )

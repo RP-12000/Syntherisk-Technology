@@ -44,11 +44,21 @@
         排除一个试剂（重新评分）以后，新拼出来的排除原因也有英文，而且随结果保存下来了
     test_errors_follow_the_language
         英文请求的 401、404、409、422 报错是英文；不带 lang 时还是原来的中文
+    test_french_is_translated_from_the_english
+        lang=fr：项目名、评分说明、报错是法文；按模板翻的句子（参数挨在一起的）切得对
+    test_every_english_text_has_french
+        代码里每一句 tr() 的英文在法文对照表 syntherisk/locales/fr.json 里都有，参数写法一致
 """
 
+import ast
 import json
 import re
+import string
+from pathlib import Path
 
+import pytest
+
+from syntherisk import i18n
 from tests.conftest import IBUPROFEN, start_analysis
 
 # 有没有汉字：和 syntherisk/i18n.py 里的 _HAN 是同一个范围（CJK 统一表意文字的基本区）
@@ -120,7 +130,7 @@ def test_default_stays_chinese_and_lang_en_or_header_gives_english(client, accou
     assert config["status"] == "权重和系数都是初稿，待用历史案例回测和化学家盲评校准"
     # 明确写 lang=zh，或者写了一个不认识的语言，也都是中文
     assert client.get("/api/projects", headers=headers, params={"lang": "zh"}).json()[0]["name"] == "默认项目"
-    assert client.get("/api/projects", headers=headers, params={"lang": "fr"}).json()[0]["name"] == "默认项目"
+    assert client.get("/api/projects", headers=headers, params={"lang": "de"}).json()[0]["name"] == "默认项目"
 
     # ---- 查询参数 ?lang=en ----
     assert client.get("/api/projects", headers=headers, params=EN).json()[0]["name"] == "Default project"
@@ -166,8 +176,9 @@ def test_default_stays_chinese_and_lang_en_or_header_gives_english(client, accou
     assert "lang=en" in client.get("/openapi.json").json()["info"]["description"]
 
 
-def test_english_ibuprofen_analysis_has_no_chinese_left(client, account):
-    """跑一次布洛芬的演示分析，各个接口用 ?lang=en 取回来，返回的 JSON 里不应该再有汉字。
+@pytest.mark.parametrize("lang", ["en", "fr"])
+def test_english_ibuprofen_analysis_has_no_chinese_left(client, account, lang):
+    """跑一次布洛芬的演示分析，各个接口用 ?lang=en（和 ?lang=fr）取回来，返回的 JSON 里不应该再有汉字。
 
     约束选的是“简洁档、只用库存、做不了加压和无水无氧、排除剧毒 / CMR / 管制、不用钯、尽量不过柱”：
     这样三条路线里有被排除的，排除原因、约束标签、软偏好这些文字都会出现。
@@ -182,14 +193,14 @@ def test_english_ibuprofen_analysis_has_no_chinese_left(client, account):
     left: list[str] = []
 
     def get(url, **params):
-        """用英文取一个接口，把返回里还带汉字的字符串记进 left，返回解析好的 JSON。"""
-        response = client.get(url, headers=headers, params={**EN, **params})
+        """用英文（法文）取一个接口，把返回里还带汉字的字符串记进 left，返回解析好的 JSON。"""
+        response = client.get(url, headers=headers, params={"lang": lang, **params})
         left.extend(_han_left(f"GET {url}", response.json()))
         return response.json()
 
     def post(url, body):
         """同上，POST。"""
-        response = client.post(url, headers=headers, params=EN, json=body)
+        response = client.post(url, headers=headers, params={"lang": lang}, json=body)
         left.extend(_han_left(f"POST {url}", response.json()))
         return response.json()
 
@@ -233,14 +244,14 @@ def test_english_ibuprofen_analysis_has_no_chinese_left(client, account):
     post(f"{base}/retry", {})
     post("/api/analyses", {"project_id": account["project_id"], "target": {}})
     post("/api/analyses", {"project_id": account["project_id"], "target": {"smiles": "C1CC"}})
-    left.extend(_han_left("GET /api/projects（没登录）", client.get("/api/projects", params=EN).json()))
+    left.extend(_han_left("GET /api/projects（没登录）", client.get("/api/projects", params={"lang": lang}).json()))
     # 几个不属于某次分析的配置接口
     for url in ("/api/scoring/config", "/api/meta/options", "/api/meta/modules", "/api/projects"):
         get(url)
 
     # 同一句话可能在很多接口里出现：按文字去重以后再报，失败信息才看得过来
     distinct = sorted({item.split(" | ", 1)[1]: item for item in left}.values())
-    assert not distinct, f"英文返回里还剩 {len(distinct)} 句中文：\n" + "\n".join(distinct)
+    assert not distinct, f"{lang} 返回里还剩 {len(distinct)} 句中文：\n" + "\n".join(distinct)
 
 
 def test_progress_events_follow_the_language(client, account):
@@ -403,3 +414,54 @@ def test_errors_follow_the_language(client, account):
     assert code == 422 and errors[0]["msg"] == "Value error, Provide at least one of name, CAS number or SMILES"
     # 英文的 422 里一个汉字都不剩（包括 Pydantic 附带的 ctx、input）
     assert not _han_left("422", errors)
+
+
+def test_french_is_translated_from_the_english(client, account):
+    """lang=fr：后端先得到英文，再查法文对照表（i18n.fr_of）。
+
+    看三类文字：存在数据库里的中文（默认项目名）、接口里拼的固定文字（评分公式）、报错；
+    再看按模板翻的句子：参数挨在一起、参数里又带空格时（“Steps 2, 3 have no precedent”）也要切对。
+    """
+    headers = account["headers"]
+    french = {"lang": "fr"}
+    assert client.get("/api/projects", headers=headers, params=french).json()[0]["name"] == "Projet par défaut"
+    formula = client.get("/api/scoring/config", headers=headers, params=french).json()["formula"]["route"]
+    english = client.get("/api/scoring/config", headers=headers, params=EN).json()["formula"]["route"]
+    assert formula == i18n.fr_of(english) != english
+    # 报错：没登录、用户名或密码不对
+    assert client.get("/api/projects", params=french).json()["detail"] == i18n.fr_of("Please sign in") != "Please sign in"
+    login = client.post("/api/auth/login", params=french, json={"username": "nobody", "password": "wrong-password"})
+    assert login.json()["detail"] == "Nom d'utilisateur ou mot de passe incorrect"
+    # 按模板翻：按个数选的词（Step / Steps、has / have）是参数，也要翻
+    assert i18n.fr_of("Step 2 has no precedent") == "Étape 2 n'a aucun précédent"
+    assert i18n.fr_of("Steps 2, 3 have no precedent") == "Étapes 2, 3 n'ont aucun précédent"
+    # 认不出来的英文原样留着
+    assert i18n.fr_of("Something nobody wrote") == "Something nobody wrote"
+
+
+def test_every_english_text_has_french(ctx):
+    """法文对照表 syntherisk/locales/fr.json 里有代码里每一句 tr() 的英文，参数的名字和格式都一样；
+    data/ 下各表登记的英文名称（启动时记进固定对照的）也都翻得出来。
+
+    新加一句 tr() 时，在 fr.json 里补上它的法文：键是英文模板原样，参数照抄（{name}、{score:g} 这些不能改）。
+    法文和英文本来就一样的（SMILES、Format 这类）也要写进去，写成和英文一样。
+    """
+    table = json.loads((Path(i18n.__file__).parent / "locales" / "fr.json").read_text(encoding="utf-8"))
+
+    def fields(text: str) -> list[tuple[str, str]]:
+        return sorted((field, spec) for _, field, spec, _ in string.Formatter().parse(text) if field is not None)
+
+    missing = []
+    for path in sorted(Path(i18n.__file__).parent.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            name = getattr(node.func, "attr", getattr(node.func, "id", None)) if isinstance(node, ast.Call) else None
+            # tr() 和 schemas.py 的 _invalid()（校验报错）都是“中文, 英文”两个参数
+            if name in ("tr", "_invalid") and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) \
+                    and isinstance(node.args[1].value, str) and node.args[1].value not in table:
+                missing.append(f"{path.name}:{node.lineno} {node.args[1].value}")
+    assert not missing, "fr.json 里缺这几句的法文：\n" + "\n".join(missing)
+    assert [english for english, french in table.items() if fields(english) != fields(french)] == []
+    # 固定对照要整句在表里（校验报错带的 "Value error, " 前缀不算）；带数字的（立体中心个数、净电荷这类按模板生成的提示）按模板翻得出来也行
+    untranslated = sorted({english for english in i18n._STATIC.values() if english.removeprefix("Value error, ") not in table
+                           and not (re.search(r"\d", english) and i18n.fr_of(english) != english)})
+    assert not untranslated, "这些固定对照的英文在 fr.json 里没有法文：\n" + "\n".join(untranslated)

@@ -49,7 +49,7 @@ import io
 from openpyxl import Workbook
 from sqlalchemy import text
 
-from tests.conftest import register, start_analysis
+from tests.conftest import accept_agreement, register, start_analysis
 
 # 一张故意做得不整齐的试剂清单，导入测试用。表头是 名称、CAS、SMILES、数量、位置 五列，下面每一行考察一种情况
 # （识别的规则在 syntherisk/modules/m01_resolver.py 的 NameResolver.resolve_row）：
@@ -288,6 +288,7 @@ def test_inventory_is_encrypted_and_private_items_are_hidden_from_teammates(clie
     assert member.status_code == 201
     login = client.post("/api/auth/login", json={"username": "labmate@example.com", "password": "another-password-1"}).json()
     mate = {"Authorization": f"Bearer {login['access_token']}"}
+    accept_agreement(client, mate)
     # 默认全组可见：同学看得到组长加的那一条
     assert client.get("/api/inventory/summary", headers=mate).json() == {"count": 1}
 

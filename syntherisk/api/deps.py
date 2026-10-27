@@ -30,7 +30,9 @@ FastAPI 就会在调用接口函数之前先调用 get_db()，把结果当作参
     get_db                  开一个数据库会话，请求结束时关闭
     Principal               当前登录的人：用户、所在组织、角色
     authenticate            令牌 → Principal；不合格一律 401
-    get_principal           接口用的依赖：要求登录
+    require_agreement       要求已经同意当前版本的内测协议；没同意 403
+    get_signed_in           接口用的依赖：只要求登录（内测协议的几个接口和 /api/auth/me 用）
+    get_principal           接口用的依赖：要求登录，并且已经同意当前版本的内测协议
     require_admin           接口用的依赖：要求是课题组管理员
     _owned                  按主键取一行，并确认它属于当前组织
     load_project            取本组织的一个项目
@@ -184,15 +186,44 @@ def authenticate(session: Session, ctx: AppContext, token: str | None) -> Princi
     return Principal(user=user, org=session.get(models.Organization, membership.org_id), role=membership.role)
 
 
-def get_principal(
+def require_agreement(session: Session, ctx: AppContext, principal: Principal) -> None:
+    """要求这个人已经同意了当前版本的内测协议（data/agreements/beta.toml 的 version）。
+
+    参数：
+        session    数据库会话。
+        ctx        运行时上下文，用到 ctx.reference.agreement.version。
+        principal  当前登录的人。
+    抛出：
+        HTTPException 403，detail 是 {"code": "agreement_required", "message": "请先阅读并同意内测协议", "version": 当前版本号}。
+        前端看到这个 code 就弹出协议（见 docs/前端对接手册.md）。
+    副作用：
+        只读 agreement_acceptances 表。
+    谁在用：
+        本文件的 get_principal；api/analyses.py 的 stream_events（进度推送自己认令牌）。
+    """
+    version = ctx.reference.agreement.version
+    accepted = session.scalar(
+        select(models.AgreementAcceptance.id)
+        .where(models.AgreementAcceptance.user_id == principal.user_id, models.AgreementAcceptance.version == version)
+        .limit(1)
+    )
+    if accepted is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, {
+            "code": "agreement_required",
+            "message": i18n.tr("请先阅读并同意内测协议", "Please read and accept the beta agreement first"),
+            "version": version,
+        })
+
+
+def get_signed_in(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
     ctx: AppContext = Depends(get_ctx),
 ) -> Principal:
-    """接口用的依赖：要求登录，返回当前登录的人。
+    """接口用的依赖：只要求登录，不管有没有同意内测协议。返回当前登录的人。
 
-    接口函数的参数里写 principal: Principal = Depends(get_principal)，就表示“这个接口要登录”。
-    只要求登录、但用不到“这个人是谁”的接口，把参数名写成下划线：_: Principal = Depends(get_principal)。
+    只有还没同意协议的人也得能用的接口才用它：GET /api/auth/me 和 api/agreement.py 里的几个接口
+    （读协议、同意协议、下载协议全文）。其余接口都用 get_principal。
 
     参数（都由 FastAPI 自动提供）：
         credentials  _bearer 从请求头 Authorization 里读出来的令牌；没带或者格式不对时是 None。
@@ -202,11 +233,34 @@ def get_principal(
         Principal。
     抛出：
         HTTPException 401（见 authenticate）。
-    谁在用：
-        api/ 下除注册、登录、进度推送以外的所有接口；本文件的 require_admin。
     """
     # credentials.credentials 就是请求头里 “Bearer ” 后面的那一串令牌
     return authenticate(db, ctx, credentials.credentials if credentials else None)
+
+
+def get_principal(
+    principal: Principal = Depends(get_signed_in),
+    db: Session = Depends(get_db),
+    ctx: AppContext = Depends(get_ctx),
+) -> Principal:
+    """接口用的依赖：要求登录，并且已经同意当前版本的内测协议，返回当前登录的人。
+
+    接口函数的参数里写 principal: Principal = Depends(get_principal)，就表示“这个接口要登录”。
+    只要求登录、但用不到“这个人是谁”的接口，把参数名写成下划线：_: Principal = Depends(get_principal)。
+
+    参数（都由 FastAPI 自动提供）：
+        principal  get_signed_in 认出来的人（同一个请求里 get_db、get_ctx 只执行一次，这里拿到的是同一个会话）。
+        db         数据库会话。
+        ctx        运行时上下文。
+    返回：
+        Principal。
+    抛出：
+        HTTPException 401（见 authenticate）；403 还没同意当前版本的内测协议（见 require_agreement）。
+    谁在用：
+        api/ 下除注册、登录、进度推送、内测协议、/api/auth/me 以外的所有接口；本文件的 require_admin。
+    """
+    require_agreement(db, ctx, principal)
+    return principal
 
 
 def require_admin(principal: Principal = Depends(get_principal)) -> Principal:

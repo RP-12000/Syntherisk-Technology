@@ -7,7 +7,7 @@
     把后端组装成一个 FastAPI 应用对象（文件末尾的 app）：
       1. 登记“启动时 / 关闭时”要做的事（lifespan）：建运行时上下文、建任务队列、把上次没跑完的分析重新排队；
       2. 加上跨域（CORS）设置，让前端开发服务器能调接口；
-      3. 把 syntherisk/api/ 下五组接口挂到 /api 前缀下面；
+      3. 把 syntherisk/api/ 下六组接口挂到 /api 前缀下面；
       4. 另外提供两个不在 /api 下的地址：/（跳到接口文档）和 /health（健康检查）。
 
 对应 PPT 里的哪个模块、界面上的哪些按钮
@@ -50,7 +50,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
 
 from syntherisk import __version__, i18n
-from syntherisk.api import analyses, core, inventory, reports, structures
+from syntherisk.api import agreement, analyses, core, inventory, reports, structures
 from syntherisk.config import Settings
 from syntherisk.context import AppContext, build_context
 from syntherisk.pipeline import recover_interrupted
@@ -117,12 +117,12 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app = FastAPI(
         title="Syntherisk 后端",
         version=__version__,
-        # 中英文切换对所有接口都一样（由下面的 language 中间件统一处理），所以只在文档页顶部说明一次，
+        # 中英法切换对所有接口都一样（由下面的 language 中间件统一处理），所以只在文档页顶部说明一次，
         # 不给每个接口各加一个 lang 参数
         description=(
             "给 AI 生成的合成路线逐步找依据、打分、排序。按钮和接口的对照表见 docs/API.md。\n\n"
             "**语言 / Language**：所有接口默认返回中文。请求里带查询参数 `?lang=en`，或者请求头 `X-Language: en`，"
-            "返回的标签、原因、进度说明、报错就是英文（进度推送 `/events` 同样认 `?lang=en`）。"
+            "返回的标签、原因、进度说明、报错就是英文；`?lang=fr` 是法文（进度推送 `/events` 同样认 `?lang=`）。"
             "这个参数不是必须的，所以下面各个接口的参数表里没有逐个列出。"
         ),
         lifespan=lifespan,
@@ -148,18 +148,18 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def language(request: Request, call_next):
-        """中英文切换：请求里带 ?lang=en（或请求头 X-Language: en）时，把返回的 JSON 换成英文。
+        """中英法切换：请求里带 ?lang=en（或请求头 X-Language: en）时，把返回的 JSON 换成英文；lang=fr 换成法文。
 
         做法见 syntherisk/i18n.py。这里做三件事：
           1. 认出这次请求要的语言，开一张这次请求用的“中文 → 英文”对照表（接口里 tr() 拼的话会记进去）；
           2. 让请求照常处理；
-          3. 要的是英文、返回的又是 JSON 时，把整个返回走一遍 i18n.localize()，再发出去。
+          3. 要的是英文或法文、返回的又是 JSON 时，把整个返回走一遍 i18n.localize()，再发出去。
         不是 JSON 的返回（文件、SVG、进度推送）原样放过；进度推送在它自己的接口里换语言。
         """
         lang = i18n.normalize_lang(request.query_params.get("lang") or request.headers.get("x-language"))
         with i18n.collecting({}, lang):
             response = await call_next(request)
-            if lang != "en" or not response.headers.get("content-type", "").startswith("application/json"):
+            if lang == "zh" or not response.headers.get("content-type", "").startswith("application/json"):
                 return response
             # call_next 给的是流式响应：把它读完，换好语言，再包成一个普通的响应
             body = b"".join([chunk async for chunk in response.body_iterator])
@@ -183,9 +183,9 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
         # version 取自 syntherisk/__init__.py 的 __version__
         return {"status": "ok", "version": __version__}
 
-    # 五组接口都挂在 /api 下面：比如 api/analyses.py 里写的 "/analyses"，实际地址是 /api/analyses。
+    # 六组接口都挂在 /api 下面：比如 api/analyses.py 里写的 "/analyses"，实际地址是 /api/analyses。
     # 每个文件里各有一个 router（APIRouter），include_router 把登记在它上面的接口并进应用
-    for module in (core, structures, analyses, inventory, reports):
+    for module in (core, agreement, structures, analyses, inventory, reports):
         app.include_router(module.router, prefix="/api")
     return app
 

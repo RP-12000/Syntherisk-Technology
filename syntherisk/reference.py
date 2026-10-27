@@ -6,6 +6,7 @@
     condition_rules.toml       条件与复杂度规则
     vocabulary.toml            约束词表
     data_sources.toml          数据来源和许可登记表
+    agreements/beta.toml       内测协议（版本号、中英文弹窗说明和全文），读它的是 syntherisk/agreement.py
 
 ---- 在整个系统里的位置 ----
 
@@ -20,7 +21,7 @@ tests/test_reference.py 专门检查这些表格自己是否自洽，改完表�
 
 ---- 每个文件读成什么 ----
 
-ReferenceData 有六个属性，各对应一个文件：
+ReferenceData 有七个属性，各对应一个文件（最后一个 agreement 的读法在 syntherisk/agreement.py 的开头）：
 
   compounds  <-  compounds.csv
       读成 CompoundLibrary：Compound 对象的列表，加上按编号、结构、CAS 号、名称查找的几个字典。
@@ -87,6 +88,10 @@ ReferenceData 有六个属性，各对应一个文件：
       （notes 可以没有）。
       谁在用：导入数据前检查许可（loaders.py）、M5 显示先例的来源名称、GET /api/meta/data-sources。
 
+  agreement  <-  agreements/beta.toml
+      读成 agreement.Agreement：版本号，每种语言一份内容（弹窗说明、勾选项、协议全文）和它的 SHA-256。
+      谁在用：api/deps.py 的 require_agreement（每个请求查当前版本同意过没有）、api/agreement.py。
+
 data/ 目录下还有两样东西不是这里读的：demo_routes/（内置演示路线，m03_retrosynthesis 读）
 和 external/（AiZynthFinder 的模型、USPTO 的原始文件）。
 
@@ -104,7 +109,7 @@ data/ 目录下还有两样东西不是这里读的：demo_routes/（内置演�
         combine_ions              把拆开写的离子拼回成盐
     ControlledEntry               管制清单的一行
     ConditionRule                 一条条件规则
-    ReferenceData                 六份参考数据放在一起
+    ReferenceData                 七份参考数据放在一起
         load                      读 data/ 目录
         reagent_class_matches     一个物质属不属于某个试剂类别
         label_for                 词表里一个条目的显示文字
@@ -122,6 +127,7 @@ from pathlib import Path
 from typing import Any
 
 from syntherisk import i18n
+from syntherisk.agreement import Agreement
 from syntherisk.modules import m01_structure as chem
 
 # 管制清单（controlled_substances.csv）的 list_name、category 两列里出现的中文和它们的英文。
@@ -571,7 +577,7 @@ class ConditionRule:
 
 @dataclass
 class ReferenceData:
-    """data/ 目录下的六份参考数据。启动时读一次，放在 AppContext.reference 上，之后只读。
+    """data/ 目录下的七份参考数据。启动时读一次，放在 AppContext.reference 上，之后只读。
 
     每个属性从哪个文件来、是什么形状，见文件头“每个文件读成什么”。
     """
@@ -582,10 +588,11 @@ class ReferenceData:
     condition_rules: list[ConditionRule]  # condition_rules.toml：规则的列表，顺序同文件
     vocabulary: dict[str, Any]  # vocabulary.toml：{组: {条目编号: 条目}}
     data_sources: dict[str, Any]  # data_sources.toml：{来源编号: {name, license, allowed, …}}
+    agreement: Agreement  # agreements/beta.toml：内测协议（syntherisk/agreement.py）
 
     @classmethod
     def load(cls, data_dir: Path) -> "ReferenceData":
-        """把 data/ 目录下的六个文件读进内存。
+        """把 data/ 目录下的七个文件读进内存。
 
         参数：
             data_dir  参考数据所在的目录（配置里的 DATA_DIR，默认是项目根目录下的 data/）。
@@ -593,11 +600,12 @@ class ReferenceData:
             ReferenceData。
         抛出（都发生在启动的时候，服务会起不来）：
             FileNotFoundError  少了某个文件。
-            ValueError         compounds.csv 里有 SMILES 读不出来；或者某条规则引用了 compounds.csv 里没有的物质。
+            ValueError         compounds.csv 里有 SMILES 读不出来；或者某条规则引用了 compounds.csv 里没有的物质；
+                               或者内测协议没有英文版、某种语言缺了键。
             TypeError          condition_rules.toml 里某条规则缺了必写的键，或者写了 ConditionRule 没有的键。
             KeyError           CSV 的表头里缺了要用的列。
         副作用：
-            读六个文件；试剂表和管制清单里的 SMILES 都要解析一遍。
+            读七个文件；试剂表和管制清单里的 SMILES 都要解析一遍。
         谁在用：
             context.build_context()（每个进程启动时一次）；tests/test_reference.py。
         """
@@ -646,6 +654,7 @@ class ReferenceData:
             vocabulary=_read_toml(data_dir / "vocabulary.toml"),
             # 来源登记表只取 [source.*] 这一层，得到 {来源编号: {…}}
             data_sources=_read_toml(data_dir / "data_sources.toml").get("source", {}),
+            agreement=Agreement.load(data_dir / "agreements" / "beta.toml"),
         )
 
     # ------------------------------------------------------------ 词表

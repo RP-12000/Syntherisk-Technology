@@ -50,7 +50,8 @@ conftest.py 是 pytest 约定的文件名：放在 tests/ 目录下，pytest 在
     make_settings        建一份测试用的配置
     ctx                  夹具：运行时上下文
     client               夹具：测试客户端
-    register             通过接口注册一个账号（同时建课题组和默认项目）
+    register             通过接口注册一个账号（同时建课题组和默认项目），并替这个账号同意内测协议
+    accept_agreement     替一个账号同意当前版本的内测协议
     account              夹具：一个注册好的账号
     start_analysis       通过接口提交一次分析
 """
@@ -208,10 +209,33 @@ def register(client: TestClient, username: str = "anna@example.com", org: str = 
     # assert 条件, 说明：条件不成立时，逗号后面的内容会显示在失败信息里。这里显示的是接口返回的原文
     assert response.status_code == 201, response.text
     data = response.json()
+    headers = {"Authorization": f"Bearer {data['access_token']}"}
+    # 同意内测协议：不同意的话，除 /api/auth/me 和协议的几个接口以外都返回 403
+    accept_agreement(client, headers)
     # 注册接口会自动建一个“默认项目”。这时项目列表里只有它，取第一个
     # 最后一行的 **data 把注册接口返回的各项原样并进要返回的字典
-    project = client.get("/api/projects", headers={"Authorization": f"Bearer {data['access_token']}"}).json()[0]
-    return {"headers": {"Authorization": f"Bearer {data['access_token']}"}, "project_id": project["id"], **data}
+    project = client.get("/api/projects", headers=headers).json()[0]
+    return {"headers": headers, "project_id": project["id"], **data}
+
+
+def accept_agreement(client: TestClient, headers: dict) -> dict:
+    """替这个账号同意当前版本的内测协议，返回同意记录（POST /api/agreement/accept 的返回）。
+
+    和前端一样：先 GET /api/agreement 拿版本、语言、哈希，再把每一个勾选项都勾上去同意。
+    参数：
+        client   测试客户端。
+        headers  这个账号的登录请求头。
+    谁在用：
+        本文件的 register（注册的人）；管理员加的成员、seed-demo 的演示账号登录以后，测试里自己调一次
+        （tests/test_app_service.py、test_inventory.py）。
+    """
+    current = client.get("/api/agreement", headers=headers).json()
+    response = client.post("/api/agreement/accept", headers=headers, json={
+        "version": current["version"], "language": current["language"], "sha256": current["sha256"],
+        "checked": [box["key"] for box in current["content"]["checkboxes"]],
+    })
+    assert response.status_code == 201, response.text
+    return response.json()
 
 
 @pytest.fixture

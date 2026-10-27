@@ -4,11 +4,12 @@
 没加密的只有账号、项目名、状态这类元数据，以及公开的参考数据（先例、在售目录）。
 
 这个文件负责什么
-    用 SQLAlchemy 2 的“声明式”写法定义全部 20 张表：每个类是一张表，类里的每个属性是一列。
+    用 SQLAlchemy 2 的“声明式”写法定义全部 22 张表：每个类是一张表，类里的每个属性是一列。
     这里只有表的定义，没有任何业务逻辑；建表在 db.py 的 init_db()，读写分散在各个模块里。
 
-20 张表分五组
-    M0 账号、项目、草稿、预设   organizations、users、memberships、projects、drafts、presets
+22 张表分五组
+    M0 账号、项目、草稿、预设   organizations、users、memberships、agreement_texts、agreement_acceptances、
+                               projects、drafts、presets
     分析任务（MQ + 流水线）     analyses、analysis_events、llm_calls
     M4 库存                    inventory_items、inventory_imports、inventory_import_rows
     M13 报告、M14 回填          reports、experiment_records、experiment_attachments、calibration_runs
@@ -47,7 +48,7 @@
 本文件里有什么（按阅读顺序）
     new_id()、utcnow()   主键和时间的默认值
     Base                 所有表的共同基类
-    Organization、User、Membership、Project、Draft、Preset            M0
+    Organization、User、Membership、AgreementText、AgreementAcceptance、Project、Draft、Preset   M0
     Analysis、AnalysisEvent、LLMCall                                  分析任务
     InventoryItem、InventoryImport、InventoryImportRow                M4 库存
     Report、ExperimentRecord、ExperimentAttachment、CalibrationRun    M13 报告、M14 回填
@@ -209,6 +210,54 @@ class Membership(Base):
     role: Mapped[str] = mapped_column(String(20), default="member")  # owner / admin / member
     # 加入时间
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgreementText(Base):
+    """有人同意过的内测协议内容：每一版、每一种语言一份，按内容的哈希存，只增不改。
+
+    为什么存全文：协议第 2.4 款要求记录对得上“同意的是哪一版、全文是什么”，而且新版不能覆盖旧版。
+    data/agreements/beta.toml 以后会改，所以第一次有人同意某一份内容时，把它原样存进来（见 syntherisk/agreement.py）。
+    加密：没有加密列（协议是给所有测试者看的文字）。
+    谁写：api/agreement.py 的 accept（这份内容第一次有人同意时）。
+    谁读：api/agreement.py（同意记录、下载同意确认）。
+    """
+
+    __tablename__ = "agreement_texts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    # 内容的 SHA-256（agreement.digest），64 个十六进制字符；同一份内容只存一次
+    sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # 版本号（比如 V0.5）和语言（zh / en / fr）。content 里也有，这里单列出来方便查
+    version: Mapped[str] = mapped_column(String(40))
+    language: Mapped[str] = mapped_column(String(8))
+    # 整份内容：弹窗上的说明、勾选项、按钮上的字、协议全文，和 beta.toml 里那种语言的表一样，外加 version、language
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    # 第一次有人同意它的时间
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgreementAcceptance(Base):
+    """谁在什么时候同意了哪一份内测协议、勾了哪几项。只增不改：同意新版是再加一行，旧的留着。
+
+    加密：没有加密列。不记 IP 和浏览器信息：协议第 9.3 款只允许处理证明有效接受所必需的信息。
+    谁写：api/agreement.py 的 accept。
+    谁读：api/deps.py 的 require_agreement（每个请求查一次当前版本同意过没有）、/api/auth/me、api/agreement.py。
+    """
+
+    __tablename__ = "agreement_acceptances"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    # 谁同意的
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # 同意的是哪一份内容（agreement_texts 的一行）
+    text_id: Mapped[str] = mapped_column(ForeignKey("agreement_texts.id"))
+    # 版本号和语言，和那份内容里的一样；require_agreement 按版本号查
+    version: Mapped[str] = mapped_column(String(40))
+    language: Mapped[str] = mapped_column(String(8))
+    # 勾了的选项，内容里 checkboxes 的 key，比如 ["accept", "adult"]。现在每一项都要勾上才能同意
+    checked: Mapped[list[str]] = mapped_column(JSON)
+    # 同意的时间（服务器收到的时间，UTC）
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Project(Base):

@@ -153,9 +153,9 @@ def default_filename(target_name: str, route_name: str, extension: str) -> str:
         api/reports.py 的 create_report()（F3）和 export_comparison()（D4）。
     """
     # 文件名是当场起的，不走“先存中文、返回时再换”的对照（下载时的响应头不经过那一步）：
-    # 这次请求要英文时，目标物和路线的名字有英文的就直接用英文。中文请求时两个名字原样
-    if i18n.current_lang() == "en":
-        target_name, route_name = i18n.en_of(target_name), i18n.en_of(route_name)
+    # 这次请求要英文（法文）时，目标物和路线的名字有英文（法文）的就直接用。中文请求时两个名字原样
+    if i18n.current_lang() != "zh":
+        target_name, route_name = i18n.localize(target_name), i18n.localize(route_name)
     stem = f"{target_name}_{route_name}_{date.today().isoformat()}"
     return safe_filename(f"{stem}.{extension}")
 

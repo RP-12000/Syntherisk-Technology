@@ -1,0 +1,329 @@
+# 内测使用与保密协议（Beta Use and Confidentiality Agreement）：注册或登录以后、用任何功能之前必须同意的协议。
+# 文字来自 2026-10-27 Anna 发来的两份 docx（内测协议.docx、内测协议英文版.docx），弹窗的版式照她给的样式图：
+# 弹窗上方的说明分成 intro 和三行 summary，正文 full_text 一字未改（## 开头的行是条标题）。
+#
+# 怎么改：
+#   改了实质内容，就把 version 往上改（比如 V0.6）：已经同意过旧版的人下次打开页面都要重新同意（第 13.2 款）。
+#   只改错别字可以不改 version，已经同意过的人不用重新同意；他们当时看到的全文按哈希存在数据库里，不会被覆盖（第 2.4 款）。
+#   加语言：照 [zh]、[en] 的样子加一个 [fr]，键要齐全。没有 [fr] 时，法语界面显示英文版，并提示法语版还没有。
+# 谁读它：syntherisk/agreement.py（启动时读一次，放在 ctx.reference.agreement 上）。
+
+version = "V0.5"
+
+[zh]
+eyebrow = "开始前请阅读"
+title = "内测使用与保密协议"
+intro = "参与 Syntherisk 内测前，请阅读完整《内测使用与保密协议》及本次访问适用的隐私说明。本轮为免费、邀请制的个人非商业性研究评估测试。"
+read_full = "阅读完整协议"
+note = "本轮不默认授权模型训练、微调、营销或其他额外数据用途。依法需要的个人信息同意将按具体目的另行取得。"
+guardian_link = "未成年或需法定代理人协助？查看监护人申请"
+guardian_text = "未成年人或需法定代理人协助者：请由监护人或其他法定代理人联系 admin@syntherisk.com 申请。完成必要程序并获明确开通后方可参加；请勿勾选成年声明自行进入。"
+accept = "同意协议并进入内测"
+decline = "拒绝并退出"
+footer = "关闭或拒绝不会视为接受。"
+full_title = "Syntherisk 内测使用与保密协议"
+summary = [
+  { label = "输入范围", text = "可输入分子结构、SMILES 或其他文本，不要求上传文件；仅可提交依法有权提供的公开、非敏感内容。" },
+  { label = "版本限制", text = "当前版本不提供审计功能。产品输出须经独立核实，不应直接作为实验、生产或其他实际决策依据。" },
+  { label = "保密与成果使用", text = "未经书面许可，不得公开非公开界面、测试结果或其他保密信息，也不得将获准输出用于论文发表、公开演示或商业项目。" },
+]
+checkboxes = [
+  { key = "accept", label = "合同接受", text = "本人已阅读并同意《内测使用与保密协议》，包括保密义务、使用限制、知识产权及法律适用条款。" },
+  { key = "adult", label = "资格声明", text = "本人已达到适用法律规定的成年年龄，并具有独立订立本协议的能力。" },
+]
+full_text = '''
+## 第一条 协议主体及组成
+
+1.1 本协议由 Syntherisk Technology Inc.（位于加拿大魁北克省，以下简称“公司”）与经公司邀请并依本协议取得测试资格的个人参与者（以下简称“测试方”）订立。双方单独称“一方”，合称“双方”。
+
+1.2 本轮采用个人邀请制。本协议不建立机构客户关系，不因填写单位名称、使用单位邮箱或持有账号而约束测试方所在学校、实验室或企业。机构测试、联合研发及数据处理等专项合作，应另行签署书面协议。
+
+1.3 本协议全文及另行取得有效接受的书面补充协议构成双方的测试约定。拟通过链接纳入的其他合同条款，应在接受前明确提示并提供可阅读、可保存的具体版本；仅在网站其他位置展示不当然使其成为本协议内容。隐私说明及依法另行取得的个人信息同意，应按各自的适用规则处理，不因接受本协议而被概括授权。
+
+## 第二条 电子订约及授权
+
+2.1 公司向获邀且具备相应订约能力的测试方提供本协议项下的有限测试权限。公司应在提交接受前提供完整、清晰且可保存的协议文本，并履行适用的语言程序。测试方主动勾选接受选项并点击“同意协议并进入内测”，其接受意思表示经系统到达公司时，在法律规定及本协议要求的成立、生效条件均满足的前提下，本协议成立并生效。仅浏览、滚动、关闭弹窗或未作答，不构成接受。需监护人或其他法定代理人参与的，按第 2.2 款办理。
+
+2.2 上述自行接受流程仅适用于已达到适用法律规定的成年年龄且具备相应订约能力的测试方。其他申请人应由具备相应权限的监护人或法定代理人联系 admin@syntherisk.com。公司应核实必要的身份及代理权限，依法完成相应代理订约或同意程序，并提供可保存的开通确认。对于该等申请人，本协议于前述订约或同意程序完成且开通确认送达时成立并生效；此前不得参加测试。未成年人自行作出成年声明或声称已获监护人同意，不替代上述程序。
+
+2.3 合同代理或监护人同意不替代依法需要的个人信息告知及同意；涉及未成年人个人信息的，公司应在相关处理前完成适用的特别保护程序。个人信息同意资格与合同订约资格应分别判断，不适用统一的年龄推定。监护人不因提出申请、代理订约或作出同意而自动承担保证责任或放弃未成年人的法定权利。
+
+2.4 公司应保留足以关联测试方、接受时间、实际选项、协议版本及对应全文的记录，并提供可保存的接受确认和文本副本。依法另行取得个人信息同意时，还应记录具体目的、告知版本、同意状态及后续撤回。记录应保持完整，必要更正应保留原记录及依据；不得以新版覆盖旧版接受内容。记录范围及保存期限应符合必要性和适用法律，不作永久保留。该安排独立于产品审计功能；“不提供审计功能”不免除依法或依约应履行的留存义务。
+
+## 第三条 测试许可及使用范围
+
+3.1 本轮测试免费，自依法有效接受并获开通之日起开始，至测试方退出、测试资格终止或本轮测试结束时止。公司授予测试方有限、非独占、不可转让、不可分许可的使用许可，仅供本人评估公司已开放的功能并开展非商业性研究评估，不得作为生产服务或向第三方提供收费服务。
+
+3.2 本轮不要求上传文件，但允许在开放的功能中输入分子结构、SMILES 或其他文本。输入范围限于测试方依法有权提供的公开、非敏感材料；存在输入框不构成接收未公开研究或受限制资料的授权。公司可按资源情况设置合理的测试限额并在使用前提示。本轮免费不构成未来服务免费的承诺；收费或自动续费须另行明确约定并取得有效接受。
+
+3.3 测试方不得出借、转售、共享账号或访问凭证；不得未经授权开放第三方访问、规避权限或调用限制、访问其他用户材料、实施破坏性测试，或妨碍服务正常运行。发现账号失控或未经授权访问，应及时通知公司。
+
+3.4 除适用法律不得限制的行为或公司事先书面授权外，测试方不得对产品进行反编译、反汇编、反向工程、模型提取，或获取非公开源代码、模型参数、系统提示及实现方法；不得利用公司的保密信息开发、训练或改进竞争性产品。本条不限制不使用公司保密信息的独立开发、依法不得禁止的研究或法定例外。
+
+## 第四条 测试版本
+
+4.1 本产品为内测版本。公司可基于测试、维护、安全或资源需要调整功能；测试服务可能出现中断、错误、结果偏差或数据丢失。除双方另有明确书面约定外，公司不作持续可用、固定响应时间或满足特定用途的保证。当前版本不提供审计功能。测试方应自行保存其依法或依适用制度需要留存的资料。
+
+4.2 产品输出仅供研究评估。测试方应在采购、实验、合成、放大、发表或其他实际应用前，独立核对原始资料、知识产权状态、适用法规和安全条件，并履行所在机构的审批程序。公司不保证生成路线可实施、实验结果可重复，或输出足以证明安全、合规及不侵权。
+
+4.3 本条对产品能力的界定不免除公司依法或依本协议承担的保密、个人信息保护、事件处理或其他不可排除的责任。
+
+## 第五条 保密信息的定义及例外
+
+5.1 “保密信息”指一方或其授权代表在本次测试中向另一方披露、提供或使其接触的非公开信息，且该信息被标示为保密，或依其性质及披露情形应合理认定为保密。提供信息的一方称“披露方”，接收信息的一方称“接收方”。信息载体及是否加注保密标识，不单独决定其保密性质。
+
+5.2 公司的保密信息包括非公开产品界面、功能、缺陷、性能、测试结果、源代码、技术文档、模型及算法实现、系统配置、商业计划、报价及客户信息，以及足以披露前述信息的截图、录屏、复制件、导出文件和比较报告。
+
+5.3 测试方在获准范围内向公司提供的非公开反馈、支持沟通及其他依法有权披露的信息，符合第 5.1 款条件的，同样属于其保密信息。本轮不要求上传资料，不因此使自愿提供且应合理保密的信息失去保护；但保密保护不等同于公司同意接收第七条禁止提交的材料。
+
+5.4 保密义务不适用于接收方能够以合理证据证明的下列信息：非因其违约而已公开的信息；披露前已合法持有且不负保密义务的信息；从有权披露且不违反保密义务的第三方合法取得的信息；未利用披露方保密信息而独立开发的信息；或披露方书面同意公开的信息。
+
+## 第六条 保密义务及允许披露
+
+6.1 接收方仅可为履行本协议及开展获准测试使用保密信息，并应采取与信息性质及风险相适应、至少达到合理程度的保护措施。未经披露方事先书面同意，不得为自身其他商业目的或任何第三方利益使用、披露、出售或许可使用保密信息。
+
+6.2 接收方仅可向履行上述目的确有必要知悉、已获授权且依法或依约承担充分保密义务的人员披露。接收方应管理其授权人员的接触及使用，并对其依法应负责的行为承担责任。公司使用服务商还应符合第九条及个人信息处理告知。
+
+6.3 未经披露方事先书面许可，不得通过社交媒体、公开或未经批准的群组、代码仓库、论文、课程、会议、客户演示或市场推广披露保密信息；不得将其上传至未经批准的第三方人工智能、翻译或文件处理服务。去除名称或标识，不当然使仍可识别的结构、路线或技术资料失去保密性质。
+
+6.4 依法院命令、法律或有权机关要求必须披露的，接收方应在法律允许且实际可行的范围内事先通知披露方，并将披露限于法定必要范围。向负有职业保密义务且确有必要知悉的法律顾问披露，以及受法律保护的投诉、举报、监管沟通或为公共健康与安全所依法允许的披露，不受本协议不当限制。本款不授权超出适用法律保护范围的公开传播。
+
+6.5 发现保密信息被未经授权访问、使用或披露时，接收方应无不当延迟地通知披露方，并采取合理措施制止侵害、控制影响和配合补救。任何一方均不得因此销毁依法应保存的证据或妨碍法定调查及通知义务。
+
+6.6 未经对方书面同意，任何一方不得将对方名称、商标、标识、参与测试的事实或非公开测试结果用于宣传、背书或案例展示。
+
+## 第七条 用户材料及有限处理授权
+
+7.1 “用户材料”指测试方通过产品输入的分子结构、SMILES、其他文本，以及在获准的反馈或支持渠道内实际提供的内容。本轮不要求上传文件；以键入、粘贴或其他输入方式提供内容，仍属于提供用户材料。测试方不得提交其无权披露的信息，也不得在输入、反馈、邮件或截图中加入本次测试不必要的个人信息。
+
+7.2 本轮不得提交未公开的专利申请前资料、机构或客户机密、第三方个人信息、患者或健康资料、受出口管制或其他特别限制的资料。确需处理此类资料的，应在提交前另行完成书面范围确认、权利核实及适用的保护安排；普通测试邀请不构成该等授权。
+
+7.3 对依法并经允许提交的用户材料，测试方仅授予公司为执行其明确请求、向其提供相关结果、处理其反馈及维护服务安全所必要的非独占、有限处理许可。该许可不转移材料的所有权，不代替个人信息处理的法律依据，亦不授权使用尚未披露的接收方或超出已告知范围的处理。
+
+7.4 本轮不默认授权公司或其服务商将用户材料或可识别个人的使用记录用于模型训练、微调、独立模型评测、评分校准、共享数据集、研究发表、公开案例、营销或转售。公司拟增加此类用途时，须事先另行明确范围、取得必要权利并在依法需要时取得单独有效同意；未取得前不得实施。测试方主动报告故障所必需的排查，不构成对上述额外用途的许可。
+
+## 第八条 知识产权及反馈
+
+8.1 公司及其许可方保留其依法享有的产品、软件、文档、模型、数据库、商标、技术及其改进的知识产权。测试方及相关权利人保留用户材料、既有技术及研究成果中的权利。除明示的有限许可外，本协议不转让或默示授予任何一方的知识产权。
+
+8.2 测试方可以在不侵犯第三方权利并遵守保密义务的前提下，为本人的非商业性研究评估保存和分析输出。将输出或非公开测试结果用于论文发表、公开演示、对外提供服务或商业项目，应事先取得公司的书面许可及其他必要授权。公开可得的原始文献及测试方未使用公司保密信息独立形成的成果，不因本协议自动成为公司财产。
+
+8.3 本协议不保证输出具有独创性、独占性、可专利性或不侵权性；对自动生成内容的权利认定以适用法律为准。测试方对外发表或利用输出时，不得未经授权披露公司或第三方的保密信息。
+
+8.4 测试方自愿提供的不含保密信息、个人信息或第三方受限内容的一般功能建议，公司可免费使用、修改并实施；该许可不转让测试方的专利、研究成果或其他既有知识产权，也不构成公开身份或反馈原文的授权。涉及专利许可、权利转让或联合研发的，双方应另行订立明确的书面协议。
+
+8.5 任何一方不得擅自移除权利标识；未经对方事先书面授权，不得利用对方保密信息为自身或第三方申请与该信息有关的知识产权。法定不能转让的权利，不因本协议被视为已转让；本协议不包含概括性的精神权利放弃。
+
+## 第九条 个人信息及服务商
+
+9.1 公司应遵守适用于相关处理活动的魁北克个人信息保护法律、加拿大联邦法律及其他依法适用的强制性规定。
+
+9.2 不要求上传文件，不等于不发生数据处理。公司应在相关收集前或依法要求的时点，以简短提示和可查阅的完整隐私说明，突出数据类别与收集方式、具体目的、接收方，以及可能实质影响个人的风险或后果，并说明必要性、处理地区、保存安排、个人权利及拒绝提供的影响。通过技术手段收集个人信息时，应依法公布并更新该说明。接受本协议不构成对未告知处理或任意新增用途的授权；依法需要的个人信息同意应按具体目的另行请求，不与合同接受捆绑。
+
+9.3 公司只应处理提供所请求服务、必要沟通、服务安全及证明有效接受所必需的信息，并将接触范围限制于确有履职需要的人员及服务商。公司应在委托处理前落实适当书面安排，约束用途、保密、安全、留存、删除及事件通知，并核实相关服务商是否将资料用于自身目的。公司对其控制的个人信息继续承担适用责任，不因委托处理而当然免除。
+
+9.4 涉及向魁北克以外提供个人信息，或委托魁北克以外的主体代为收集、使用、传递或保存个人信息时，公司应在实施前依法完成隐私影响评估、必要的书面安排、告知及同意程序；法律另有规定的，从其规定。公司有理由认为发生个人信息保密事件时，应依法采取措施、评估风险、记录并履行适用通知义务，不以取得泄露的最终确证为处理前提。
+
+9.5 相关个人可向 ethan.zhang@syntherisk.com 就其本人的个人信息提出访问、更正、依法适用的删除、符合条件的可携带副本、撤回同意或其他权利请求。公司可进行必要且适度的身份核验，并应在适用法定期限内答复；拒绝时应说明适用理由及救济渠道。对基于同意的处理，撤回应按适用法律落实，不影响撤回前依法进行的处理。撤回必要处理同意可能影响相应功能，但不得仅因拒绝与本轮服务无关的额外用途而拒绝必要服务。投诉可提交公司隐私负责人或有管辖权的监管机构。
+
+9.6 如实际使用 Cookie、分析工具或其他识别、定位、画像技术，公司应据实说明有关用途、接收方及可用控制方式，并在适用法律要求时履行事先告知、启用选择或同意程序。本款不表示本版本已使用上述技术，也不构成对尚未告知技术的授权。
+
+## 第十条 期限 终止及资料处置
+
+10.1 本协议自依第二条成立并生效时起适用，至测试方退出、公司终止其测试资格或测试项目结束时终止，但依其性质应持续有效的条款不受影响。
+
+10.2 测试方可以随时向 admin@syntherisk.com 申请退出，无须说明理由且不产生退出费用。严重违约、违法使用、安全事件或其他实质风险发生时，公司可采取合理必要的暂停或终止措施，并在法律允许且实际可行时说明原因。对于非紧急的本轮测试结束或整体服务取消，公司原则上至少提前七个日历日通知，并在实际可提供的范围内给予保存获准资料的机会。
+
+10.3 终止后，测试方应停止访问产品及使用凭证，并删除或返还不再获准持有的公司保密信息；依法或为维护具体权利确有必要保存的协议、接受确认及相关证据，可在必要范围内受限保留，原有保密义务继续适用。公司应按已告知且符合法律要求的规则处置用户材料和个人信息；目的已实现且无合法保留依据的，不得无限期保存。依法或为处理实际争议所必需的资料，可在必要范围内受限保留。备份中的保留不构成继续使用授权，应按已告知且合法的清除安排处理；恢复备份时，应在重新用于业务前执行适用的删除及停止处理要求。
+
+10.4 一般保密义务持续至本协议终止后三年；依法仍构成商业秘密的信息，在其保持商业秘密性质期间持续受保护。个人信息的保存期限应另按必要性及适用法律确定，不因保密期限而自动延长。
+
+## 第十一条 责任及救济
+
+11.1 一方违反本协议，应依适用法律承担与其行为、因果关系及可证明损失相应的责任。守约方可依法请求停止侵害、采取补救措施、赔偿损失或其他救济，并应采取合理措施减少损失。
+
+11.2 双方确认，保密信息泄露或知识产权侵害可能造成金钱赔偿难以充分弥补的损害。受影响方可向有管辖权的法院申请适用法律允许的禁令或其他临时救济；救济是否成立及其条件由法院依法决定，本条不预先免除举证义务。
+
+11.3 本协议不排除或限制因故意或重大过错造成的财产损害责任，不排除或限制人身损害或精神性损害责任，亦不排除适用法律规定不得免除的责任。任何另行约定的责任限制，均受前述保留及其他强制性规定约束。
+
+11.4 除双方另行签署的书面协议另有明确约定外，本协议不设固定违约金或预定的赔偿总额上限。任何此类补充约定均受第 11.3 款及其他适用强制性规定的限制。
+
+## 第十二条 法律适用及争议解决
+
+12.1 本协议的成立、效力、解释、履行及争议解决，受魁北克省法律及在该省适用的加拿大联邦法律管辖。版权、专利、商标及相关权利的存在、范围和救济，分别适用有关联邦或其他依法适用的知识产权规定。
+
+12.2 因本协议发生的争议，双方可先通过公布的联系渠道协商解决；协商不限制任何一方及时申请临时救济或依法提起程序。除强制性法律另有规定外，双方接受魁北克省有管辖权法院的非专属管辖；依法属于加拿大联邦法院专属管辖的事项，依相关规定处理。
+
+12.3 面向加拿大、中国大陆及台湾地区参与者时，相关消费者、未成年人、个人信息、法定管辖及其他依法适用且不可排除的保护不因本协议而被放弃。相关处理触发当地特别告知、单独同意、代表设置或跨境程序要求时，公司应在实施前依法落实；普通内测接受不能替代这些程序。魁北克法律选择条款不构成排除其他强制性法律的承诺，也不保证争议只能在魁北克提出。
+
+## 第十三条 通知 修改及其他约定
+
+13.1 与本协议有关的公司通知通过 admin@syntherisk.com 发出，或通过双方已经明确约定的产品通知渠道发送。测试方可向该邮箱发送退出及协议通知；隐私事项可直接联系 ethan.zhang@syntherisk.com。通知是否送达依适用法律及可提供的记录判断；依法要求特定形式或送达方式的，从其规定。
+
+13.2 公司作实质修改时，应在实施前提供变更内容及新版全文，并对需要重新接受的事项取得明确接受；新的个人信息用途应另行履行适用程序。不得以预勾选、沉默或仅继续使用推定测试方接受未告知的新增义务。测试方不同意修改的，可以退出。
+
+13.3 本协议不设立合伙、代理、雇佣或共同研发关系。未经对方同意，不得转让本协议项下权利义务，但法律另有规定的除外。
+
+13.4 任一条款被认定无效或不可执行，不当然影响其余可独立适用条款；如该条款与协议不可分割，则依适用法律处理。未立即行使权利不当然构成弃权。
+
+13.5 本文件为中文文本。适用魁北克格式合同法文要求时，公司应先依法提供法文版本或符合法定要求的法文电子访问方式，再依双方明确意愿采用其他语言；不得仅以勾选中文协议视为放弃法文权利。与魁北克以外参与者订约等法定例外，须按其具体条件判断。不同语言版本存在差异时，依适用强制性规定处理，不预先约定任何语言在所有情形下绝对优先。
+'''
+
+[en]
+eyebrow = "Please read before you start"
+title = "Beta Use and Confidentiality Agreement"
+intro = "Before participating in the Syntherisk beta, please read the full Beta Use and Confidentiality Agreement and the privacy notice applicable to this access. This is a free, invitation-only beta for personal, non-commercial research and evaluation."
+read_full = "Read the full agreement"
+note = "Participation in this beta does not, by default, authorise model training, fine-tuning, marketing or other additional uses of data. Any legally required consent to the processing of personal information will be obtained separately for specific purposes."
+guardian_link = "Under the age of majority or need a legal representative? See how a guardian can apply"
+guardian_text = "Minors and individuals requiring assistance from a legal representative: A guardian or other legal representative must contact admin@syntherisk.com to apply. Participation is permitted only after the necessary procedures have been completed and access has been expressly activated. Do not select the age-of-majority declaration to gain access independently."
+accept = "Accept Agreement and Enter Beta"
+decline = "Decline and Exit"
+footer = "Closing or declining does not count as acceptance."
+full_title = "Syntherisk Beta Use and Confidentiality Agreement"
+summary = [
+  { label = "Input scope", text = "You may enter molecular structures, SMILES or other text; file uploads are not required. Submit only public, non-sensitive content that you are lawfully entitled to provide." },
+  { label = "Version limits", text = "This version does not provide audit functionality. Product outputs must be independently verified and must not be used directly as the basis for experiments, production or other practical decisions." },
+  { label = "Confidentiality and use of outputs", text = "Without written permission, you must not publicly disclose non-public interfaces, test results or other Confidential Information, or use permitted outputs for academic publication, public demonstrations or commercial projects." },
+]
+checkboxes = [
+  { key = "accept", label = "Acceptance", text = "I have read and agree to the Beta Use and Confidentiality Agreement, including its confidentiality obligations, use restrictions, intellectual property provisions and governing law provisions." },
+  { key = "adult", label = "Eligibility", text = "I have reached the age of majority under applicable law and have the legal capacity to enter into this Agreement independently." },
+]
+full_text = '''
+## Article 1 Parties and Agreement Documents
+
+1.1 This Agreement is entered into between Syntherisk Technology Inc., located in Québec, Canada (the "Company"), and the individual invited by the Company who becomes eligible to participate in the beta under this Agreement (the "Participant"). Each is a "Party" and together they are the "Parties".
+
+1.2 This beta is offered by invitation to individuals. This Agreement does not create an institutional customer relationship. Providing an organisation's name, using its email address or holding an account does not bind the Participant's school, laboratory or business. Institutional testing, joint research and development, data processing and other specific collaborations require separate written agreements.
+
+1.3 The full text of this Agreement and any written supplemental agreements separately and validly accepted constitute the Parties' agreement concerning the beta. Any other contractual terms intended to be incorporated by reference through a link must be expressly brought to the Participant's attention before acceptance, and the specific version must be available to read and save. Merely displaying terms elsewhere on the website does not automatically incorporate them into this Agreement. Privacy notices and any separately obtained, legally required consent concerning personal information are subject to their respective applicable rules; acceptance of this Agreement does not constitute blanket authorisation.
+
+## Article 2 Electronic Contracting and Authority
+
+2.1 The Company provides invited Participants who have the requisite contractual capacity with limited beta access under this Agreement. Before acceptance is submitted, the Company must provide the complete, clear and savable text of the Agreement and comply with applicable language procedures. When the Participant actively selects the acceptance option and clicks "Accept Agreement and Enter Beta", this Agreement is formed and takes effect when that expression of acceptance reaches the Company through the system, provided that all requirements for formation and effectiveness under law and this Agreement have been met. Merely browsing, scrolling, closing the popup or failing to respond does not constitute acceptance. Where a guardian or other legal representative must be involved, Clause 2.2 applies.
+
+2.2 The process for independent acceptance described above is available only to Participants who have reached the age of majority under applicable law and have the requisite contractual capacity. Other applicants must have a guardian or legal representative with the necessary authority contact admin@syntherisk.com. The Company must verify the necessary identity and representative authority, complete the applicable procedures for contracting through a representative or obtaining consent, and provide a savable confirmation of access activation. For these applicants, this Agreement is formed and takes effect once those contracting or consent procedures are completed and the activation confirmation is delivered; they must not participate before then. A minor's own declaration of adulthood or statement that guardian consent has been obtained does not replace these procedures.
+
+2.3 Contracting through a representative or obtaining guardian consent does not replace legally required privacy notices and consent. Where minors' personal information is involved, the Company must complete the applicable special protection procedures before the relevant processing. Capacity to consent to personal information processing and capacity to enter into a contract must be assessed separately; a single presumed age threshold does not apply to both. A guardian does not automatically assume liability as a guarantor or waive the minor's statutory rights merely by applying, contracting as a representative or giving consent.
+
+2.4 The Company must retain records sufficient to associate the Participant with the time of acceptance, the options actually selected, the Agreement version and its complete text, and must provide a savable acceptance confirmation and a copy of the text. Where separate consent concerning personal information is legally required and obtained, the specific purpose, notice version, consent status and any subsequent withdrawal must also be recorded. Records must retain their integrity; necessary corrections must preserve the original record and the basis for the correction. A new version must not overwrite the content previously accepted. The scope and retention period of records must be consistent with necessity and applicable law; records must not be retained permanently. These arrangements are separate from the product's audit functionality. The absence of audit functionality does not relieve the Company of any record-retention obligations imposed by law or this Agreement.
+
+## Article 3 Beta Licence and Permitted Use
+
+3.1 This beta is free of charge. Participation begins upon legally valid acceptance and activation of access and ends when the Participant withdraws, eligibility is terminated or this beta ends. The Company grants the Participant a limited, non-exclusive, non-transferable and non-sublicensable licence solely to evaluate the features made available by the Company and conduct personal, non-commercial research and evaluation. The product must not be used as a production service or to provide paid services to third parties.
+
+3.2 This beta does not require file uploads, but the available features allow entry of molecular structures, SMILES or other text. Inputs are limited to public, non-sensitive materials that the Participant is lawfully entitled to provide. The presence of an input field does not authorise submission of unpublished research or restricted materials. The Company may set reasonable usage limits according to available resources and must disclose them before use. This beta being free does not constitute a promise that future services will be free. Charges or automatic renewal require a separate, express agreement and valid acceptance.
+
+3.3 The Participant must not lend, resell or share an account or access credentials, grant unauthorised third-party access, bypass permissions or request limits, access other users' materials, conduct destructive testing or interfere with the normal operation of the service. The Participant must promptly notify the Company upon discovering loss of control of an account or unauthorised access.
+
+3.4 Except for conduct that applicable law does not permit to be restricted or that the Company has authorised in advance in writing, the Participant must not decompile, disassemble or reverse engineer the product, extract its models, or obtain non-public source code, model parameters, system prompts or implementation methods. The Participant must not use the Company's Confidential Information to develop, train or improve a competing product. This Article does not restrict independent development without the use of the Company's Confidential Information, research that cannot lawfully be prohibited, or statutory exceptions.
+
+## Article 4 Beta Version
+
+4.1 The product is a beta version. The Company may adjust its features for testing, maintenance, security or resource needs. The beta service may experience interruptions, errors, inaccurate results or data loss. Unless the Parties expressly agree otherwise in writing, the Company does not guarantee continuous availability, a fixed response time or suitability for a particular purpose. This version does not provide audit functionality. The Participant must independently retain any materials required by law or applicable institutional requirements.
+
+4.2 Product outputs are solely for research and evaluation. Before procurement, experimentation, synthesis, scale-up, publication or any other practical application, the Participant must independently verify the original sources, intellectual property status, applicable regulations and safety conditions, and follow the approval procedures of their institution. The Company does not guarantee that generated routes can be implemented, that experimental results can be reproduced, or that outputs are sufficient to establish safety, compliance or non-infringement.
+
+4.3 The description of product capabilities in this Article does not relieve the Company of its obligations under law or this Agreement concerning confidentiality, personal information protection, incident handling or any other liability that cannot lawfully be excluded.
+
+## Article 5 Confidential Information and Exceptions
+
+5.1 "Confidential Information" means non-public information that a Party or its authorised representative discloses, provides or makes accessible to the other Party during this beta and that is marked confidential or should reasonably be considered confidential in view of its nature and the circumstances of disclosure. The Party providing the information is the "Disclosing Party", and the Party receiving it is the "Receiving Party". Neither the medium in which information is held nor the presence or absence of a confidentiality marking alone determines its confidential status.
+
+5.2 The Company's Confidential Information includes non-public product interfaces, features, defects, performance, test results, source code, technical documentation, model and algorithm implementations, system configurations, business plans, pricing and customer information, as well as screenshots, screen recordings, copies, exported files and comparison reports that reveal such information.
+
+5.3 Non-public feedback, support communications and other information that the Participant is lawfully entitled to disclose and provides to the Company within the permitted scope also constitute the Participant's Confidential Information if they meet the conditions in Clause 5.1. Although uploads are not required for this beta, information voluntarily provided that should reasonably be kept confidential remains protected. Confidentiality protection does not, however, mean that the Company has agreed to receive materials prohibited under Article 7.
+
+5.4 Confidentiality obligations do not apply to information that the Receiving Party can establish by reasonable evidence: is publicly available other than through its breach; was lawfully in its possession before disclosure without a duty of confidentiality; was lawfully obtained from a third party entitled to disclose it without breaching a duty of confidentiality; was independently developed without using the Disclosing Party's Confidential Information; or was approved for public disclosure in writing by the Disclosing Party.
+
+## Article 6 Confidentiality Obligations and Permitted Disclosure
+
+6.1 The Receiving Party may use Confidential Information only to perform this Agreement and conduct the authorised beta testing. It must adopt safeguards appropriate to the nature of the information and the associated risks, exercising at least a reasonable degree of care. Without the Disclosing Party's prior written consent, the Receiving Party must not use, disclose, sell or license Confidential Information for any other commercial purpose of its own or for the benefit of any third party.
+
+6.2 The Receiving Party may disclose Confidential Information only to authorised persons who genuinely need to know it for the purposes stated above and are subject to adequate confidentiality obligations under law or contract. The Receiving Party must manage access and use by its authorised persons and is responsible for their conduct to the extent required by applicable law. The Company's use of service providers must also comply with Article 9 and the applicable notice concerning personal information processing.
+
+6.3 Without the Disclosing Party's prior written permission, Confidential Information must not be disclosed through social media, public or unapproved groups, code repositories, academic papers, courses, conferences, customer demonstrations or marketing. It must not be uploaded to unapproved third-party artificial intelligence, translation or file-processing services. Removing names or identifiers does not automatically remove the confidential status of structures, routes or technical materials that remain identifiable.
+
+6.4 Where disclosure is required by a court order, law or a competent authority, the Receiving Party must give the Disclosing Party advance notice to the extent legally permitted and practicable, and limit disclosure to what is legally required. This Agreement must not improperly restrict disclosure to legal advisers who genuinely need to know and are bound by professional confidentiality, legally protected complaints, whistleblowing or communications with regulators, or disclosures lawfully permitted for public health and safety. This Clause does not authorise public dissemination beyond the protection afforded by applicable law.
+
+6.5 Upon discovering unauthorised access to, use of or disclosure of Confidential Information, the Receiving Party must notify the Disclosing Party without undue delay and take reasonable steps to stop the breach, contain its effects and cooperate in remediation. Neither Party may, in doing so, destroy evidence that must be retained by law or obstruct statutory investigation or notification obligations.
+
+6.6 Without the other Party's written consent, neither Party may use the other Party's name, trademarks, logos, participation in the beta or non-public test results for publicity, endorsements or case studies.
+
+## Article 7 User Materials and Limited Processing Licence
+
+7.1 "User Materials" means molecular structures, SMILES and other text entered by the Participant through the product, as well as content actually provided through approved feedback or support channels. This beta does not require file uploads; providing content by typing, pasting or other input methods still constitutes providing User Materials. The Participant must not submit information they are not entitled to disclose or include personal information unnecessary for this beta in inputs, feedback, emails or screenshots.
+
+7.2 Materials that must not be submitted in this beta include unpublished materials relating to inventions before patent applications are filed, institutional or customer confidential information, third-party personal information, patient or health information, and materials subject to export controls or other special restrictions. If such materials need to be processed, the scope must be separately confirmed in writing, rights verified and applicable safeguards put in place before submission. An ordinary beta invitation does not constitute such authorisation.
+
+7.3 For User Materials lawfully submitted within the permitted scope, the Participant grants the Company only a non-exclusive, limited processing licence to the extent necessary to carry out the Participant's express requests, provide the relevant results, address the Participant's feedback and maintain service security. This licence does not transfer ownership of the materials, replace the legal basis required for personal information processing, or authorise the use of undisclosed recipients or processing beyond the scope disclosed to the Participant.
+
+7.4 This beta does not, by default, authorise the Company or its service providers to use User Materials or usage records that identify individuals for model training, fine-tuning, independent model evaluation, score calibration, shared datasets, research publications, public case studies, marketing or resale. Before introducing any such use, the Company must separately specify its scope, obtain the necessary rights and, where legally required, obtain separate, valid consent. The use must not begin before these requirements are met. Troubleshooting necessary to address a fault voluntarily reported by the Participant does not constitute permission for these additional uses.
+
+## Article 8 Intellectual Property and Feedback
+
+8.1 The Company and its licensors retain the intellectual property rights they lawfully hold in the product, software, documentation, models, databases, trademarks, technology and improvements to them. The Participant and relevant rights holders retain their rights in User Materials, pre-existing technology and research results. Except for the limited licences expressly granted, this Agreement neither transfers nor grants by implication any intellectual property rights of either Party.
+
+8.2 The Participant may save and analyse outputs for their own non-commercial research and evaluation, provided that third-party rights are not infringed and confidentiality obligations are observed. Use of outputs or non-public test results for academic publication, public demonstrations, services to others or commercial projects requires the Company's prior written permission and any other necessary authorisations. Publicly available source publications and results independently created by the Participant without using the Company's Confidential Information do not automatically become the Company's property under this Agreement.
+
+8.3 This Agreement does not guarantee that outputs are original, exclusive, patentable or non-infringing. Rights in automatically generated content are determined by applicable law. When publishing or otherwise using outputs externally, the Participant must not disclose the Company's or any third party's Confidential Information without authorisation.
+
+8.4 The Company may use, modify and implement, without charge, general feature suggestions voluntarily provided by the Participant that do not contain Confidential Information, personal information or restricted third-party content. This permission does not transfer the Participant's patents, research results or other pre-existing intellectual property rights, nor does it authorise public disclosure of the Participant's identity or the original feedback text. Patent licences, transfers of rights and joint research and development require a separate, express written agreement between the Parties.
+
+8.5 Neither Party may remove rights notices without authorisation. Without the other Party's prior written authorisation, neither Party may use the other Party's Confidential Information to apply for intellectual property rights relating to that information for itself or a third party. Rights that cannot lawfully be assigned are not deemed assigned under this Agreement. This Agreement does not contain a blanket waiver of moral rights.
+
+## Article 9 Personal Information and Service Providers
+
+9.1 The Company must comply with Québec personal information protection laws, Canadian federal laws and any other mandatory requirements legally applicable to the relevant processing activities.
+
+9.2 The absence of a file-upload requirement does not mean that no data processing occurs. Before the relevant collection, or at the time required by law, the Company must provide a short notice and an accessible, complete privacy notice highlighting the categories of data and collection methods, specific purposes, recipients, and any risks or consequences that may materially affect individuals. The notices must also explain necessity, processing locations, retention arrangements, individual rights and the consequences of refusing to provide information. Where personal information is collected by technological means, the notice must be published and updated as required by law. Acceptance of this Agreement does not authorise undisclosed processing or arbitrary new uses. Any legally required consent concerning personal information must be requested separately for specific purposes and must not be bundled with acceptance of this Agreement.
+
+9.3 The Company must process only the information necessary to provide the requested services, conduct necessary communications, maintain service security and demonstrate valid acceptance. Access must be limited to personnel and service providers who genuinely need it to perform their duties. Before engaging a service provider to process information, the Company must put appropriate written arrangements in place governing purposes, confidentiality, security, retention, deletion and incident notification, and verify whether the provider uses the information for its own purposes. The Company remains subject to applicable responsibilities for personal information under its control; outsourcing processing does not automatically relieve it of those responsibilities.
+
+9.4 Before communicating personal information outside Québec, or engaging an entity outside Québec to collect, use, communicate or retain personal information on its behalf, the Company must complete the privacy impact assessment, necessary written arrangements, notices and consent procedures required by law, unless otherwise provided by law. When the Company has reason to believe that a confidentiality incident involving personal information has occurred, it must take the measures, assess the risks, maintain the records and provide the notifications required by law. It must not wait for conclusive proof of a breach before responding.
+
+9.5 Individuals may contact ethan.zhang@syntherisk.com to request access to or rectification of their own personal information, deletion where legally applicable, a portable copy where the relevant conditions are met, withdrawal of consent or the exercise of other rights. The Company may conduct necessary and proportionate identity verification and must respond within the applicable statutory period. Any refusal must state the applicable reasons and available avenues of recourse. For processing based on consent, withdrawal must be implemented in accordance with applicable law and does not affect lawful processing undertaken before withdrawal. Withdrawal of consent to necessary processing may affect the corresponding features, but necessary services must not be denied solely because an individual refuses additional uses unrelated to this beta service. Complaints may be submitted to the Company's privacy officer or the competent regulatory authority.
+
+9.6 If cookies, analytics tools or other identification, location or profiling technologies are actually used, the Company must accurately describe their purposes, recipients and available controls, and comply with any applicable requirements for prior notice, activation choices or consent. This Clause does not state that this version uses these technologies and does not authorise technologies that have not been disclosed.
+
+## Article 10 Term Termination and Disposal of Materials
+
+10.1 This Agreement applies from the time it is formed and takes effect under Article 2 until the Participant withdraws, the Company terminates the Participant's eligibility or the beta programme ends. Provisions that by their nature are intended to survive remain in effect.
+
+10.2 The Participant may request withdrawal at any time by contacting admin@syntherisk.com, without giving a reason or incurring a withdrawal fee. In the event of a serious breach, unlawful use, a security incident or another material risk, the Company may take reasonably necessary measures to suspend or terminate access and must explain the reasons where legally permitted and practicable. For a non-emergency conclusion of this beta or cancellation of the service as a whole, the Company will generally give at least seven calendar days' advance notice and provide an opportunity to save permitted materials to the extent practicable.
+
+10.3 Upon termination, the Participant must stop accessing the product and using access credentials, and must delete or return the Company's Confidential Information that they are no longer authorised to hold. The Agreement, acceptance confirmations and related evidence that must be retained by law or are genuinely necessary to protect specific rights may be retained on a restricted basis to the extent necessary, subject to the existing confidentiality obligations. The Company must dispose of User Materials and personal information in accordance with the rules disclosed to the Participant and applicable law. Information must not be retained indefinitely once its purposes have been fulfilled and there is no lawful basis for retention. Materials required by law or necessary to address an actual dispute may be retained on a restricted basis to the extent necessary. Retention in backups does not authorise continued use; backups must be handled in accordance with the disclosed, lawful deletion arrangements. If a backup is restored, applicable deletion and cessation-of-processing requirements must be implemented before the information is used again for business purposes.
+
+10.4 General confidentiality obligations continue for three years after termination of this Agreement. Information that continues to qualify as a trade secret under applicable law remains protected for as long as it retains that status. Retention periods for personal information must be determined separately according to necessity and applicable law and are not automatically extended by the confidentiality period.
+
+## Article 11 Liability and Remedies
+
+11.1 A Party that breaches this Agreement is liable under applicable law having regard to its conduct, causation and provable loss. The non-breaching Party may seek cessation of the breach, remedial measures, damages or other relief available under law and must take reasonable steps to mitigate loss.
+
+11.2 The Parties acknowledge that disclosure of Confidential Information or infringement of intellectual property rights may cause harm for which monetary damages are not an adequate remedy. The affected Party may apply to a court of competent jurisdiction for an injunction or other interim relief available under applicable law. The court will determine whether relief is warranted and the conditions for granting it. This Clause does not waive evidentiary requirements in advance.
+
+11.3 This Agreement does not exclude or limit liability for material injury caused by intentional or gross fault, liability for bodily or moral injury, or any liability that cannot be excluded under applicable law. Any separately agreed limitation of liability remains subject to these reservations and other mandatory requirements.
+
+11.4 Unless expressly provided otherwise in a separate written agreement signed by both Parties, this Agreement does not impose a fixed contractual penalty or a predetermined aggregate cap on damages. Any such supplemental agreement remains subject to Clause 11.3 and other applicable mandatory requirements.
+
+## Article 12 Governing Law and Dispute Resolution
+
+12.1 The formation, validity, interpretation and performance of this Agreement, and the resolution of disputes arising from it, are governed by the laws of Québec and the Canadian federal laws applicable in that province. The existence, scope and remedies for copyright, patents, trademarks and related rights are governed by the relevant federal or other legally applicable intellectual property provisions.
+
+12.2 The Parties may first seek to resolve disputes arising from this Agreement through the published contact channels. Such discussions do not restrict either Party from promptly seeking interim relief or commencing proceedings in accordance with law. Except where mandatory law provides otherwise, the Parties submit to the non-exclusive jurisdiction of the competent courts of Québec. Matters falling within the exclusive jurisdiction of the Federal Court of Canada are subject to the relevant legal requirements.
+
+12.3 For Participants in Canada, mainland China and Taiwan, applicable and non-waivable protections concerning consumers, minors, personal information, statutory jurisdiction and other matters are not waived by this Agreement. Where processing triggers local requirements for special notices, separate consent, the appointment of a representative or cross-border procedures, the Company must meet those requirements before proceeding. Ordinary acceptance of the beta agreement does not replace those procedures. The choice of Québec law does not constitute an undertaking to exclude other mandatory laws or guarantee that disputes may be brought only in Québec.
+
+## Article 13 Notices Amendments and Other Provisions
+
+13.1 Company notices concerning this Agreement will be sent from admin@syntherisk.com or through product notification channels expressly agreed by the Parties. The Participant may send withdrawal requests and contractual notices to that email address. Privacy matters may be directed to ethan.zhang@syntherisk.com. Whether a notice has been delivered is determined under applicable law and the available records. Any legally required form or method of service prevails.
+
+13.2 Before implementing material amendments, the Company must provide details of the changes and the complete revised text, and obtain express acceptance where renewed acceptance is required. New uses of personal information require separate compliance with the applicable procedures. Preselected options, silence or continued use alone must not be treated as acceptance of undisclosed new obligations. The Participant may withdraw if they do not agree to an amendment.
+
+13.3 This Agreement does not create a partnership, agency, employment or joint research and development relationship. Neither Party may assign its rights or obligations under this Agreement without the other Party's consent, except as otherwise provided by law.
+
+13.4 A finding that any provision is invalid or unenforceable does not automatically affect the remaining provisions that can apply independently. If the provision is inseparable from the Agreement, applicable law governs the consequences. A failure to exercise a right immediately does not automatically constitute a waiver.
+
+13.5 This document is the English translation of the Chinese text. Where Québec's French-language requirements for contracts of adhesion apply, the Company must first provide a French version or electronic access in French that meets the statutory requirements, before using another language in accordance with the Parties' express wishes. Selecting acceptance of the Chinese-language agreement alone must not be treated as a waiver of French-language rights. Statutory exceptions, including those concerning contracts with Participants outside Québec, must be assessed according to their specific conditions. Differences between language versions are subject to applicable mandatory requirements; no language is agreed in advance to have absolute priority in all circumstances.
+'''

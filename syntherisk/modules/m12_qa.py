@@ -40,7 +40,7 @@ from typing import Any
 from syntherisk import i18n
 from syntherisk.cards import render_sentences
 from syntherisk.llm import LLMError, LLMService
-from syntherisk.modules.m11_explain import model_facts, validate_sentences
+from syntherisk.modules.m11_explain import model_facts, system_prompt, validate_sentences
 
 # 答不了时的固定回答：模型说答不了、模型的句子都没通过核对、或者模板归不了类，都返回这一句。
 # tests/test_llm.py 也用它核对结果。
@@ -161,7 +161,7 @@ class QuestionAnswerer:
                 # module="M12" 和两个 id 只用来记用量
                 response = self.llm.complete_json(
                     module="M12",
-                    system=QA_SYSTEM_PROMPT_EN if lang == "en" else QA_SYSTEM_PROMPT,
+                    system=system_prompt(lang, QA_SYSTEM_PROMPT, QA_SYSTEM_PROMPT_EN),
                     user=json.dumps({"card": facts, "question": question}, ensure_ascii=False),
                     schema=QA_SCHEMA,
                     schema_name="card_answer",

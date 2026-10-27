@@ -106,6 +106,7 @@
 | 用途 | 接口 |
 |---|---|
 | 注册（同时建课题组）、登录、当前用户 | `POST /auth/register`、`POST /auth/login`、`GET /auth/me` |
+| 内测协议：读、下载全文、同意、同意记录、下载同意确认 | `GET /agreement`、`GET /agreement/file`、`POST /agreement/accept`、`GET /agreement/acceptances`、`GET /agreement/acceptances/{id}/file` |
 | 组内成员 | `GET /org/members`、`POST /org/members`（管理员） |
 | 项目 | `GET /projects`、`POST /projects` |
 | 分析列表（可按项目筛） | `GET /analyses?project_id=` |

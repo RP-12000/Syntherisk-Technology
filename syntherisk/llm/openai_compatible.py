@@ -111,9 +111,9 @@ class OpenAICompatibleProvider:
             # 厂商只保证“输出是一个 JSON 对象”，所以把 Schema 的原文附在系统提示词后面告诉模型。
             # ensure_ascii=False：Schema 里的中文原样写出，不转成 \uXXXX 这样的转义
             response_format = {"type": "json_object"}
-            # 这句要求跟着系统提示词的语言走：业务模块在要英文时发的是英文提示词（见 m11_explain.py），
+            # 这句要求跟着系统提示词的语言走：业务模块在要英文或法文时发的是英文提示词（见 m11_explain.py），
             # 后面接一句中文容易把模型带回中文。中文时这一段和以前一字不差
-            if i18n.current_lang() == "en":
+            if i18n.current_lang() != "zh":
                 demand = "Output a single JSON object and nothing else. It must conform to the following JSON Schema:"
             else:
                 demand = "只输出一个 JSON 对象，不要有任何其他文字。它必须符合下面的 JSON Schema："

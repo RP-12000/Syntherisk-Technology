@@ -102,7 +102,7 @@ from syntherisk import i18n, models
 from syntherisk.api import schemas
 from syntherisk.api.deps import (
     Principal, authenticate, get_ctx, get_db, get_principal, load_analysis, load_finished_analysis,
-    load_project, load_scored_analysis,
+    load_project, load_scored_analysis, require_agreement,
 )
 from syntherisk.api.views import (
     SORT_OPTIONS, analysis_list_item, analysis_view, drop_stale_explanations, preliminary_view, result_view,
@@ -443,7 +443,7 @@ async def stream_events(analysis_id: str, request: Request, access_token: str | 
     重跑或者重新搜索过的分析，前几轮的事件还留在库里，但新连上来时只发最近一轮的，
     所以收到的 `done` 一定是这一轮的。
 
-    出错（在开始推送之前返回，是普通的 JSON 错误）：401 没登录；404 没有这个分析。
+    出错（在开始推送之前返回，是普通的 JSON 错误）：401 没登录；403 还没同意内测协议；404 没有这个分析。
     """
     # 这个接口没有用 Depends(get_principal)：get_principal 只认请求头里的令牌，而这里的令牌也可能在网址里。
     # 所以自己取令牌、自己调 authenticate。
@@ -452,12 +452,14 @@ async def stream_events(analysis_id: str, request: Request, access_token: str | 
     token = header[7:] if header.lower().startswith("bearer ") else access_token
 
     def check_access() -> None:
-        """检查令牌有效，并且这次分析属于他所在的课题组。
+        """检查令牌有效、已经同意了内测协议，并且这次分析属于他所在的课题组。
 
-        不合格时抛 HTTPException：401（authenticate）或 404（load_analysis）。只读数据库。
+        不合格时抛 HTTPException：401（authenticate）、403（require_agreement）或 404（load_analysis）。只读数据库。
         """
         with ctx.session_factory() as session:
-            load_analysis(session, authenticate(session, ctx, token), analysis_id)
+            principal = authenticate(session, ctx, token)
+            require_agreement(session, ctx, principal)
+            load_analysis(session, principal, analysis_id)
 
     # 这是 async 接口：直接在这里查数据库，查的时候整个事件循环都得等着，别的请求也被卡住。
     # run_in_threadpool 把这个同步函数放到线程池里跑，等它跑完再往下走
@@ -487,8 +489,8 @@ async def stream_events(analysis_id: str, request: Request, access_token: str | 
             events, current = await run_in_threadpool(_events_after, ctx, analysis_id, cursor)
             for event_id, event_type, payload in events:
                 cursor = event_id
-                # 英文：换成英文的进度说明；中文：去掉事件里附带的英文（message_en），和以前的格式一样
-                shown = (i18n.localize(payload, lang) if lang == "en"
+                # 英文、法文：换成那种语言的进度说明；中文：去掉事件里附带的英文（message_en），和以前的格式一样
+                shown = (i18n.localize(payload, lang) if lang != "zh"
                          else {k: v for k, v in payload.items() if not k.endswith("_en")})
                 # SSE 的格式：每条事件是几行 “字段: 值”，以一个空行结束。
                 # ensure_ascii=False 让中文原样输出，不变成 \uXXXX

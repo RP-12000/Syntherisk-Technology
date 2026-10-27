@@ -25,9 +25,10 @@
                                      在里面抛 ValueError，同样是返回 422
 
 本文件里有什么（按阅读顺序）：
-    _EMAIL  邮箱格式的正则表达式
+    _USERNAME  用户名的正则表达式
     M0（账号、项目、草稿、预设）
         RegisterRequest   注册                    LoginRequest   登录
+        AgreementAccept   同意内测协议
         MemberCreate      管理员加成员             ProjectCreate  建项目
         DraftSave         保存草稿（A6）           PresetSave     保存预设（A15、D3）
     M1 / M2（结构、约束解析）
@@ -127,6 +128,21 @@ class MemberCreate(BaseModel):
     display_name: str = Field(default="", max_length=200)
     # 这里选不了 owner：owner 只在建课题组的时候产生（注册接口，或者命令行的 seed-demo）
     role: Literal["admin", "member"] = "member"
+
+
+class AgreementAccept(BaseModel):
+    """同意内测协议的请求体（`POST /api/agreement/accept`）。前三项原样带回 `GET /api/agreement` 给的值。
+
+    - `version`：同意的是哪一版，比如 `V0.5`
+    - `language`：看的是哪种语言的那一份（`zh`、`en`）
+    - `sha256`：那一份内容的哈希。和服务器上的对不上（协议刚改过）时返回 409，要重新读
+    - `checked`：勾了的选项（协议里 `checkboxes` 的 `key`），每一项都要勾上
+    """
+
+    version: str = Field(max_length=40)
+    language: str = Field(max_length=8)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    checked: list[str] = Field(max_length=20)
 
 
 class ProjectCreate(BaseModel):

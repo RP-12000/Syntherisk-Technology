@@ -68,7 +68,7 @@ from sqlalchemy import select
 from syntherisk import cli, inventory_import, models, pipeline
 from syntherisk.modules.m03_retrosynthesis import SearchResult
 from syntherisk.modules.m05_precedents import precedent_from_reaction
-from tests.conftest import ASPIRIN, IBUPROFEN, TEST_PASSWORD, register, start_analysis
+from tests.conftest import ASPIRIN, IBUPROFEN, TEST_PASSWORD, accept_agreement, register, start_analysis
 
 
 # ---------------------------------------------------------------- 账号、项目
@@ -233,6 +233,7 @@ def test_team_presets_for_constraints_and_weights(client, account):
     # 组长（account）给同学开一个账号，同学登录以后拿到自己的令牌，用它去读约束预设
     client.post("/api/org/members", headers=account["headers"], json={"username": "mate@example.com", "password": "another-password-1"})
     mate = client.post("/api/auth/login", json={"username": "mate@example.com", "password": "another-password-1"}).json()
+    accept_agreement(client, {"Authorization": f"Bearer {mate['access_token']}"})
     mine = client.get("/api/presets", headers={"Authorization": f"Bearer {mate['access_token']}"}, params={"kind": "constraints"}).json()
     assert [p["name"] for p in mine] == ["课题组默认"]
 
@@ -652,6 +653,7 @@ def test_command_line_tools(client, account, ctx, monkeypatch, capsys, tmp_path)
     # 用演示账号走接口登录，确认它真的能用，库存里是 8 种
     demo = client.post("/api/auth/login", json={"username": "demo@example.com", "password": TEST_PASSWORD}).json()
     headers = {"Authorization": f"Bearer {demo['access_token']}"}
+    accept_agreement(client, headers)
     assert client.get("/api/inventory/summary", headers=headers).json() == {"count": 8}
 
     # reaxys_scifinder 在 data/data_sources.toml 里登记的是不允许使用（学术许可）。“没登记”和“登记为不允许”
