@@ -48,9 +48,10 @@ def test_the_agreement_file_has_the_same_clauses_in_every_language(ctx):
         articles = [p for p in paragraphs if p.startswith("## ")]
         clauses = [m.group(0) for p in paragraphs if (m := re.match(r"^\d+\.\d+", p))]
         numbering[language] = (len(articles), clauses)
-        # 两个勾选项：同意协议、选择用这种语言订立合同
-        assert [box["key"] for box in package["checkboxes"]] == ["accept", "language"]
+        # 三个勾选项：同意协议、选择用这种语言订立合同、已阅读隐私政策；隐私政策 11 节
+        assert [box["key"] for box in package["checkboxes"]] == ["accept", "language", "privacy"]
         assert len(package["summary"]) == 3
+        assert package["privacy_text"].count("## ") == 11 and "admin@syntherisk.com" in package["note"]
     assert numbering["zh"][0] == 12 and len(numbering["zh"][1]) == 54
     assert all(value == numbering["zh"] for value in numbering.values())
 
@@ -74,7 +75,7 @@ def test_nothing_works_until_the_agreement_is_accepted(client):
     assert current["content"]["accept"] == "同意协议并进入内测"
     file = client.get("/api/agreement/file", headers=headers)
     assert file.status_code == 200 and file.headers["content-type"].startswith("text/plain")
-    assert "Syntherisk 内测使用与保密协议" in file.text and "第十二条" in file.text
+    assert "Syntherisk 内测使用与保密协议" in file.text and "第十二条" in file.text and "Syntherisk 隐私政策" in file.text
 
     accept_agreement(client, headers)
     assert client.get("/api/auth/me", headers=headers).json()["agreement"]["accepted"] is True
@@ -85,18 +86,19 @@ def test_accepting_checks_version_hash_and_every_box(client):
     """版本或哈希对不上 409；少勾一项 422；没有这种语言 422。都不会留下同意记录。"""
     headers = _register_only(client)
     current = client.get("/api/agreement", headers={**headers, "X-Language": "en"}).json()
-    body = {"version": current["version"], "language": "en", "sha256": current["sha256"], "checked": ["accept", "language"]}
+    body = {"version": current["version"], "language": "en", "sha256": current["sha256"], "checked": ["accept", "language", "privacy"]}
 
     assert client.post("/api/agreement/accept", headers=headers, json={**body, "version": "V0.1"}).status_code == 409
     # 拿英文那份的哈希说自己同意的是中文版：对不上
     assert client.post("/api/agreement/accept", headers=headers, json={**body, "language": "zh"}).status_code == 409
     assert client.post("/api/agreement/accept", headers=headers, json={**body, "checked": ["accept"]}).status_code == 422
+    assert client.post("/api/agreement/accept", headers=headers, json={**body, "checked": ["accept", "language"]}).status_code == 422
     assert client.post("/api/agreement/accept", headers=headers, json={**body, "language": "de"}).status_code == 422
     assert client.get("/api/agreement/acceptances", headers=headers).json() == []
 
     accepted = client.post("/api/agreement/accept", headers=headers, json=body)
     assert accepted.status_code == 201
-    assert [box["key"] for box in accepted.json()["checked"]] == ["accept", "language"]
+    assert [box["key"] for box in accepted.json()["checked"]] == ["accept", "language", "privacy"]
 
 
 def test_acceptance_is_recorded_with_the_text_and_survives_a_new_version(client, ctx):
@@ -110,7 +112,7 @@ def test_acceptance_is_recorded_with_the_text_and_survives_a_new_version(client,
     # 下载同意确认：用户名、勾了的两项、记录编号、当时的全文
     confirmation = client.get(f"/api/agreement/acceptances/{record['id']}/file", headers=headers).text
     assert "anna-two" in confirmation and record["id"] in confirmation
-    assert confirmation.count("[x]") == 2 and "第一条 协议主体及组成" in confirmation
+    assert confirmation.count("[x]") == 3 and "第一条 协议主体及组成" in confirmation
     # 别人看不到这条记录
     other = _register_only(client, "someone-else")
     assert client.get(f"/api/agreement/acceptances/{record['id']}/file", headers=other).status_code == 404
@@ -138,7 +140,7 @@ def test_french_interface_gets_the_french_agreement(client):
     assert current["requested_language"] == "fr" and current["language"] == "fr"
     assert current["content"]["accept"] == "Accepter la Convention et accéder à l'essai"
     accepted = client.post("/api/agreement/accept", headers=headers, json={
-        "version": current["version"], "language": "fr", "sha256": current["sha256"], "checked": ["accept", "language"]})
+        "version": current["version"], "language": "fr", "sha256": current["sha256"], "checked": ["accept", "language", "privacy"]})
     assert accepted.status_code == 201 and accepted.json()["language"] == "fr"
 
 

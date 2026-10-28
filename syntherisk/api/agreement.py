@@ -89,7 +89,7 @@ def current_agreement(principal: Principal = Depends(get_signed_in), db: Session
     - `sha256`：这一份内容的哈希，同意时原样带回
     - `content`：弹窗和全文要显示的文字：`eyebrow`、`title`、`intro`、`summary`（`[{label, text}]`）、`read_full`、
       `checkboxes`（`[{key, label, text}]`，每一项都要勾上才能同意）、`accept`、`decline`、`footer`、`full_title`、
-      `full_text`（“## ”开头的行是条标题，段与段之间空一行）；可能还有 `note`、`guardian_link`、`guardian_text`（V0.8 没有）
+      `full_text`（“## ”开头的行是条标题，段与段之间空一行）；可能还有 `note`、`guardian_link`、`guardian_text`（V0.8 没有）和 `privacy_button`、`privacy_title`、`privacy_text`（隐私政策，V0.8.1 起有）
     - `acceptance`：我对当前版本最近的一次同意（样子同 `POST /api/agreement/accept` 的返回）；还没同意过是 `null`
     """
     agreement = ctx.reference.agreement

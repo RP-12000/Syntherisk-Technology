@@ -10,17 +10,20 @@
 #   每种语言一张表，键要齐全（note、guardian_link、guardian_text 三个键可以没有）。
 # 谁读它：syntherisk/agreement.py（启动时读一次，放在 ctx.reference.agreement 上）。
 
-version = "V0.8"
+version = "V0.8.1"
 
 [zh]
 eyebrow = "开始前请阅读"
 title = "内测使用与保密协议"
 intro = "参与 Syntherisk 内测前，请阅读完整《内测使用与保密协议》及本次访问适用的《隐私政策》。本轮为免费、邀请制测试。仅供非商业性研究评估。"
 read_full = "阅读完整协议"
+note = "如有隐私方面的问题，或希望查询、更正、删除个人信息及提出投诉，请联系 admin@syntherisk.com。您也可以通过公司网站的联系入口留言，注明转交个人信息保护负责人。联系我们时，请说明您使用的账号或与公司的联系、需要处理的问题，以及方便回复您的方式。为确认身份或处理请求，我们可能请您补充必要资料。请勿发送密码、完整身份证件、银行资料或与问题无关的研究内容。"
 accept = "同意协议并进入内测"
 decline = "拒绝并退出"
 footer = "关闭或拒绝不会视为接受。"
 full_title = "Syntherisk 内测使用与保密协议"
+privacy_button = "隐私政策"
+privacy_title = "Syntherisk 隐私政策"
 summary = [
   { label = "版本限制", text = "当前版本不提供审计功能。产品输出须经独立核实，不应直接作为实验、生产或其他实际决策依据。" },
   { label = "权利保留", text = "公司保留其技术、模型及依法形成的改进中的权利。" },
@@ -29,6 +32,7 @@ summary = [
 checkboxes = [
   { key = "accept", label = "合同接受", text = "本人已阅读并同意《内测使用与保密协议》" },
   { key = "language", label = "合同语言选择", text = "本人明确选择以中文订立本协议。在法律要求先提供法文版本的情形下，公司已在本次选择前依法提供法文合同及相关文件供本人取得并审阅。本项不表示放弃依法不得放弃的语言权利。" },
+  { key = "privacy", label = "隐私政策", text = "本人已阅读并知悉《隐私政策》。" },
 ]
 full_text = '''
 ## 第一条 协议主体及组成
@@ -163,16 +167,136 @@ full_text = '''
 
 12.4 本中文版为可直接接受的正式合同文本，无须另行签署英文版。适用魁北克《法语宪章》第 55 条的法文要求时，公司应先免费向测试方提供同一修订版本的法文合同及相关文件，再由测试方通过弹窗明确选择以中文订约；公司提供中文订约选项表示其同意该选择。符合魁北克以外交易等法定例外的，依该例外的具体条件及语言选择要求办理。公司应保存实际提供的文本、提供方式及语言选择记录；勾选声明不能替代依法实际提供法文文本，界面语言、国籍或所在地也不能替代明确的订约语言选择。本款不影响依法不可放弃的语言权利，亦不使未经有效接受的其他语言文本自动成为合同内容。
 '''
+privacy_text = '''
+Syntherisk Technology Inc.（以下简称“我们”或“公司”）位于加拿大魁北克省。这份政策说明您访问公司网站、参加内测或联系我们时，我们如何收集、使用和保护个人信息，以及您享有哪些权利。本轮内测免费，采取邀请制，仅向已达到所在地法定成年年龄的个人开放。
+
+能够直接识别您，或与其他资料结合后识别您的信息，都属于个人信息。例如，分子结构或 SMILES 本身未必能识别个人，但如果与账号、研究人员身份或其他个人记录关联，就可能属于个人信息。本政策也适用于我们交由服务商处理的个人信息。
+
+我们按魁北克《私营部门个人信息保护法》及其他适用法律处理个人信息。涉及商业活动、跨省或国际信息流转时，加拿大《个人信息保护和电子文件法》（PIPEDA）也可能适用，我们会遵守其中适用的要求。您所在地法律赋予且不可放弃的权利，不受本政策影响。
+
+## 一 我们收集哪些信息
+
+我们收集的信息来自您主动提供的内容、与您往来时形成的记录，以及服务运行所需的技术记录。收集前，或在法律规定的时间，我们会说明用途，并标明哪些信息是使用该功能所必需的。具体收集哪些信息，取决于您使用的功能和联系渠道。
+
+接受邀请、注册或登录时，您可能需要提供电子邮箱、显示名称及成年资格确认。我们会使用这些信息，以及邀请标识和账号标识，核对测试资格、管理账号权限并发送必要的服务通知。原则上，我们只确认您是否已达到法定成年年龄，不要求完整出生日期或身份证件。
+
+使用分子分析功能时，我们会处理您键入或粘贴的分子结构、SMILES 和其他文本，以及生成结果、任务时间、任务标识和必要的错误信息。这些信息用于完成计算、交付结果和解决相关使用问题。虽然当前产品不需要上传文件，您键入或粘贴的内容仍会提交给服务。
+
+联系我们或反馈问题时，我们会使用您提供的联系方式、问题描述和往来记录，回复问题、处理投诉或修复缺陷。请只提供解决问题所需的内容。如果您的信息由他人提供，我们会先确认收集是否符合法律要求，并依法向您说明来源。
+
+访问网站或使用产品时，可能产生 IP 地址、访问时间、浏览器和设备类型、请求状态、登录异常及错误记录。我们仅用这些必要记录维持服务、安全防护、防止滥用和排查故障，不会为了排障默认记录密码或把全部自由文本复制进技术日志。Cookie 等技术的说明见第四节。
+
+您接受协议或作出授权选择时，我们会保存相关账号或邀请标识、实际接受时间、协议和告知文本版本、订约语言、选择状态，以及之后的变更或撤回记录。这些记录用于核实您当时收到的说明和作出的选择、管理权限及处理争议。产品目前没有审计功能，我们仍需依法保存必要的接受证据和安全记录。
+
+本轮测试不需要患者、受试者、健康、基因、财务等敏感个人信息，也不需要他人的身份资料，请勿将这些内容放进输入或支持信息中。如果不慎提交，请联系个人信息保护负责人。我们会限制进一步使用，并根据实际情况和法律要求删除、退回或保留必要证据。
+
+## 二 您的同意和选择
+
+这份政策说明我们如何处理个人信息。阅读政策、接受内测协议或选择合同语言，并不等于同意所有可选用途。我们只为明确、合法且必要的目的收集和使用个人信息，并根据信息的敏感程度和您的合理预期，采用适当的同意方式。只有法律明确允许时，我们才会在规定范围内不经同意处理。
+
+需要征求同意时，我们会说明涉及哪些信息、用来做什么、交给谁处理，以及可以合理预见的重要影响。书面同意请求会与其他信息分开呈现，敏感个人信息依法取得明示同意。如果要改变原有用途，或增加尚未获得有效授权的用途，我们会先向您说明，并在法律要求时重新取得同意。
+
+您可以拒绝或撤回可选授权，仍然使用基本测试功能。如果某项信息确实是识别账号、安全验证或完成您请求的功能所必需的，拒绝提供可能使该功能无法使用，我们会向您说明原因。我们不会要求您以提供无关信息为条件参加测试。撤回授权不影响此前已经合法进行的处理，法律要求保留的记录也仍需保存。
+
+我们不出售或出租个人信息，也不将其用于行为广告、跨网站追踪或服务商自己的模型训练。参加内测不会让您自动订阅营销邮件。如果以后开展可选营销或其他新用途，我们会先履行相应的告知和同意要求，并提供方便的退出方式。
+
+## 三 产品评测和模型训练
+
+根据您有效接受的《Syntherisk 内测使用与保密协议》第 7.3 款，我们可以在非独占、免许可费的许可范围内，使用“合格测试数据”进行 Syntherisk 产品内部准确性评测、回归测试、缺陷分析，以及评分尺度和阈值校准。合格测试数据仅包括您有权许可的公开、非敏感输入及相应输出，以及符合相同条件的错误标签和质量评分；不得含有个人信息、测试方或第三方保密信息，也不得受到第三方用途限制。我们会在评测前核验来源和使用权限，排除不合格内容。该授权仅在内测协议存续期间及终止后三年内有效，不包括模型训练或微调。
+
+账号、邮箱、IP 地址和能关联到个人的任务记录，不属于上述合格测试数据。删掉姓名或改用编号，也不一定使数据失去个人信息属性。只有依法完成匿名化、进行风险评估并达到无法合理识别个人的标准，才可按匿名信息处理；否则仍适用本政策。
+
+根据内测协议第 7.4 款，模型训练或微调需要您另行作出明确、可核验的可选授权；仅接受内测协议、阅读本政策或选择合同语言，不构成该授权。我们会事先单独提供《模型训练说明》，并保留授权记录；使用复选框时，默认不勾选。说明将交代数据范围、训练目的和方式、服务商、处理地区、保存期限和撤回渠道，以及撤回后已训练模型的处理安排与剩余风险。在说明、授权记录和撤回控制准备妥当前，不开展训练。
+
+训练授权仅限于您有权许可的合格测试数据，不包括个人信息，也不允许服务商用这些数据为自己或其他客户训练模型。拒绝或撤回授权，都不影响基本测试功能。撤回后，我们会停止将相关数据用于后续训练；已训练模型按事先向您说明且合法有效的安排处理，不保证能够立即从模型中消除相关数据的影响。
+
+分子分析和质量评分针对的是分子或研究任务。本轮测试不使用个人信息作出完全自动化的个人决定，包括个人参与资格决定。如果以后引入这类功能，我们会依法告知，说明所用个人信息、主要因素、参数和理由，并允许您更正信息，向有权复核决定的人员提出意见。
+
+## 四 Cookie 和类似技术
+
+网站可能使用 Cookie 或浏览器本地存储，维持登录状态、完成安全校验，或记住您的语言和隐私选择。只有相关功能实际启用且确有需要时，才使用这些技术，并说明用途、有效期和接收方。您可以在浏览器中管理或删除记录，但禁用必要功能可能影响登录，或使网站无法记住您的选择。
+
+本轮测试默认关闭非必要的分析、广告、定位和画像技术。如以后需要使用，我们会先说明其功能、收集的信息、接收方和控制方式，并依法由您主动启用或表示同意，不会以默认勾选或未作回应代替您的选择。拒绝非必要技术不影响基本测试功能。产品提供的隐私设置，依法默认采用最高保护级别。
+
+## 五 谁可以接触您的信息
+
+公司内部人员只有在工作确有需要时才能接触个人信息。例如，账号管理人员处理邀请和权限，技术及支持人员解决运行问题，个人信息保护负责人处理请求和投诉。负责法律或安全事务的人员，也可能在处理具体争议或事件时接触必要资料。每个人的访问范围限于其工作所需，并须遵守保密和用途限制。
+
+部分功能可能由服务商提供，包括网站托管、云基础设施、数据库、认证和邮件、运算或模型接口，以及技术支持和安全服务。我们只提供完成相应工作所需的信息：账号和邮件服务使用必要的身份及联系信息，运算或模型接口处理任务内容和必要标识，托管及安全服务可能处理技术记录。与您使用的功能无关的服务商，不会因此取得您的信息。
+
+委托服务商前，我们会用书面合同明确数据用途、保密、安全、分包、保存、删除、事件通知和核查要求，限制其将信息用于自身目的。交由服务商处理后，我们仍对所控制的信息承担相应责任。法律、会计等专业顾问也只有在办理具体事项需要且法律允许时，才能取得相关信息。
+
+向其他主体提供个人信息，需要取得相应同意，或有法律明确允许、要求的理由，例如响应有效法律程序、履行法定报告义务或处理法律规定的紧急情况。融资、合并或业务转让涉及个人信息时，我们只在法律允许且确有必要的范围内提供，并落实专门的保密和用途限制。交易未完成或信息不再需要时，依法返还或销毁；交易完成后，按法律要求通知。
+
+## 六 魁北克以外的信息处理
+
+服务商及其分包方可能在魁北克以外存储、处理或远程访问个人信息，包括加拿大其他省份和其他国家。因此，信息不一定只保存在魁北克或加拿大，也可能受到处理地法律，以及当地政府或法院依法提出的请求影响。
+
+向魁北克以外提供个人信息，或委托当地机构收集、使用、披露或保存信息前，我们会完成法律要求的隐私影响评估，确认信息能够得到适当保护，并签订反映评估结果和风险缓解措施的书面协议。所需告知和同意程序也须先行完成，条件未满足时不启用相关处理。您可以联系负责人，了解涉及您信息的接收方类别、处理地区和保护安排。
+
+## 七 保存多久以及如何删除
+
+我们只在完成已说明的用途所需的时间内保存个人信息。以下是本轮测试的默认期限；除法律要求、具体争议保全或其他合法必要原因外，到期删除。您也可以提前提出删除请求，办理方式见第九节。我们会说明哪些信息可以删除，哪些仍需依法保留。
+
+邀请与账号信息：未激活的邀请信息，在邀请失效后三十日内删除。普通账号资料，在您退出或本轮测试结束后三十日内删除，以先发生的时间为准。协议接受证据按下文的独立期限保留，不因此继续保存整个账号或全部任务。
+
+任务输入与输出：从任务完成之日起最多保存三十日，用于交付结果和处理相关故障。必要技术记录最多保存九十日。支持及投诉往来通常保留至事项结案后十二个月；其中属于法定权利请求或需继续保全的部分，按法律要求或具体必要期限保存。
+
+接受与选择记录：在您参与测试期间及参与终止后三年内，保留证明告知、协议接受、授权和撤回所需的最少记录。三年期限只适用于这些必要证据，不适用于全部个人信息；不再需要的内容会提前删除。
+
+法律要求或特殊情况：用于对个人作出决定的信息，至少保存至决定作出后一年。个人信息保密事件的登记信息，至少保存至公司知悉事件之日或期间后五年。法律、监管要求或具体争议需要保留其他材料时，我们只保存必要部分，限制其他使用，并在保留理由消失后按本政策处置。
+
+删除与备份：确认可删除的范围后，在线信息原则上在三十日内清除。备份中的相应内容，在在线删除后最长九十日内随备份轮换清除，期间不用于日常业务。如需恢复备份，会重新执行相关删除限制。法律要求更早处理的，我们按该要求办理；技术删除进度不会延长权利请求的法定回复期限。
+
+合格的非个人测试数据，按第三节及有效授权处理。只要信息仍能识别个人，即使改用编号、暂时与账号分开，或被列为研发资料，仍适用个人信息的保存期限。未达到法定匿名化标准的，也不能视为已经删除或不再受个人信息保护。
+
+## 八 信息安全与事件处理
+
+我们根据个人信息的敏感程度、用途、数量、分布和存储方式，采取相应的管理、物理和技术保护措施，限制访问权限和不必要的复制。个人信息保护负责人监督保存、销毁、请求办理和投诉程序。涉及个人信息的信息系统或电子服务项目，按法律要求开展隐私影响评估，并在设计阶段考虑保护措施。
+
+一旦发生或有合理理由怀疑发生未经授权的访问、使用、披露、丢失等个人信息保密事件，我们会采取合理措施控制风险、调查原因、防止再次发生，并记录处理情况。存在严重损害风险时，我们会按魁北克法及时通知监管机构和受影响人员；PIPEDA 适用时，也履行相应的报告、通知和记录义务。通知会说明法律要求告知的事实、风险、应对措施和联系方式。
+
+网络服务无法排除所有风险。请保管好登录凭据，只提交测试所需且您有权提供的材料，发现异常时及时联系我们。公司仍须履行法律规定的保护义务，您的投诉和救济权利也不受这些提醒影响。
+
+## 九 您如何管理个人信息
+
+您可以向个人信息保护负责人提出书面请求，确认我们是否持有您的个人信息、查阅信息或取得副本，也可以了解其来源、用途、可访问人员和接收方类别，以及保存期限。如果信息不准确、不完整、有歧义，或收集、披露、保存不符合法律要求，您可以依法要求更正或采取相应措施。
+
+符合法定条件时，您可以要求以结构化、常用的技术格式，取得我们通过计算机收集自您的个人信息，或将其传输给您指定且依法有权收集的主体。这项权利不当然包括我们创作或推断的信息，并受法律规定的严重实际困难等限制。内测协议中的知识产权条款，不会排除您的法定个人信息权利。
+
+您可以撤回可选处理的同意，或要求删除已不再需要、或依法不得继续保存的信息。如部分信息仍需依法保留，我们会说明原因、期限或确定期限的标准，以及使用限制。对于已经公开传播的信息，您也可以在法定条件下要求停止传播、取消索引或重新建立索引。
+
+收到访问或更正请求后，我们会尽快处理，最迟在收到请求之日起三十日内书面回复。必要时，我们会协助您说明请求内容；其他请求也会按适用法律及时办理。核实身份或内部转交不会自动重新计算法定期限。如果无法满足全部或部分请求，我们会说明理由、适用条文，以及您可以采取的救济途径和期限。
+
+查阅个人信息原则上免费。如果依法可收取合理的复制、转录或传输费用，我们会事先告知预计金额。提出隐私请求、拒绝可选用途或依法投诉，不会使您失去与该事项无关的基本测试资格。
+
+## 十 投诉与监管救济
+
+如果您认为我们没有按本政策或法律处理个人信息，可以通过文首的联系邮箱或网站入口投诉。请说明相关账号或联系方式、遇到的问题，以及希望如何解决。个人信息保护负责人会调查并记录处理结果，向您说明决定和相应的纠正措施。涉及访问或更正请求的部分，仍按法定期限办理。
+
+您也可以依法向魁北克信息获取委员会（Commission d’accès à l’information du Québec，CAI）寻求救济。属于 PIPEDA 管辖的事项，可向加拿大隐私专员办公室（Office of the Privacy Commissioner of Canada，OPC）反映。请留意相应机构公布的受理条件、程序和期限；公司内部处理不会替代监管救济，也不会延长法定期限。
+
+官方办理入口：CAI 隐私权利及救济；OPC 隐私问题与投诉。
+
+## 十一 政策更新与其他文件
+
+个人信息的处理须符合适用法律、本政策和收集时向您提供的说明。内测协议第 7.3 款的非个人测试数据评测许可、第 7.4 款的单独模型训练授权，以及协议中的保密和知识产权条款，均不构成对个人信息处理的额外授权。第三方网站独立处理信息时适用其隐私政策；对于我们委托处理的信息，服务商自己的政策不能替代公司的责任。
+
+我们会在网站公布本政策及修订说明，标明版本和更新日期，并在收集相关信息前提供可以阅读和保存的文本。如果修订涉及用途、共享、处理地区或其他重要权益，我们会在实施前以适当方式通知您，并在法律要求时重新取得同意。仅更新网页、您继续访问或未回复通知，都不能代替法律要求的新同意。
+'''
 
 [en]
 eyebrow = "Please read before you start"
 title = "Beta Use and Confidentiality Agreement"
 intro = "Before participating in the Syntherisk beta, please read the full Beta Use and Confidentiality Agreement and the Privacy Policy applicable to this access. This is a free, invitation-only beta, solely for non-commercial research and evaluation."
 read_full = "Read the full agreement"
+note = "If you have a privacy question, wish to access, correct or delete personal information, or would like to make a complaint, please contact admin@syntherisk.com. You can also use the contact option on the Company's website and ask for your message to be forwarded to the Privacy Officer. When contacting us, please identify your account or explain your relationship with the Company, describe your request and tell us how to reach you. We may ask for additional information needed to verify your identity or handle the request. Please do not send passwords, complete identity documents, banking details or research material unrelated to the issue."
 accept = "Accept Agreement and Enter Beta"
 decline = "Decline and Exit"
 footer = "Closing or declining does not count as acceptance."
 full_title = "Syntherisk Beta Use and Confidentiality Agreement"
+privacy_button = "Privacy Policy"
+privacy_title = "Syntherisk Privacy Policy"
 summary = [
   { label = "Version limits", text = "This version does not provide audit functionality. Product outputs must be independently verified and must not be used directly as the basis for experiments, production or other practical decisions." },
   { label = "Rights retained", text = "The Company retains its rights in its technology, models and lawfully developed improvements." },
@@ -181,6 +305,7 @@ summary = [
 checkboxes = [
   { key = "accept", label = "Agreement acceptance", text = "I have read and agree to the Beta Use and Confidentiality Agreement." },
   { key = "language", label = "Contract language choice", text = "I expressly choose to enter into this Agreement in English. Where the law requires a French version to be provided first, the Company has, before this choice, provided the French Agreement and related documents for me to obtain and review in accordance with law. This choice does not waive any language rights that cannot lawfully be waived." },
+  { key = "privacy", label = "Privacy Policy", text = "I have read and understood the Privacy Policy." },
 ]
 full_text = '''
 ## Article 1 Parties and Agreement Documents
@@ -315,16 +440,136 @@ full_text = '''
 
 12.4 This English version is an official contractual text that may be accepted directly; separate execution in another language is not required, subject to the language requirements below. Where section 55 of Québec's Charter of the French language requires French to be provided first, the Company must first provide, free of charge, the French Agreement and related documents corresponding to the same revision, after which the Participant must expressly choose English through the popup. By offering the English contracting option, the Company expresses its agreement to that choice. Statutory exceptions, including contracts used in relations outside Québec, apply subject to their specific conditions and language-choice requirements. The Company must retain the texts actually provided, the method of provision and the language-choice records. A checkbox declaration does not replace legally required provision of the French text; interface language, nationality or location does not replace an express choice of contract language. This Clause preserves non-waivable language rights and does not automatically incorporate other language texts that have not been validly accepted.
 '''
+privacy_text = '''
+Syntherisk Technology Inc. ("we" or the "Company") is based in Québec, Canada. This Policy explains how we collect, use and protect personal information when you visit our website, participate in beta testing or contact us, and describes your rights. This beta round is free, by invitation only and open only to individuals who have reached the age of majority where they live.
+
+Personal information is information that identifies you directly or can identify you when combined with other information. A molecular structure or SMILES string, for example, may not identify anyone on its own, but may become personal information when linked to an account, a researcher's identity or other personal records. This Policy also covers personal information we entrust to service providers.
+
+We handle personal information in accordance with Québec's Act respecting the protection of personal information in the private sector and other applicable laws. Canada's Personal Information Protection and Electronic Documents Act (PIPEDA) may also apply to commercial activities and interprovincial or international information flows. We comply with its applicable requirements. This Policy does not limit any rights under the laws where you live that cannot be waived.
+
+## 1 Information we collect
+
+The information we collect comes from content you provide, records of our interactions with you and technical records needed to operate the service. Before collection, or at the time required by law, we explain the purposes and identify information that is necessary to use a feature. The information collected depends on the features and contact channels you use.
+
+When accepting an invitation, registering or signing in, you may be asked for an email address, a display name and confirmation that you are an adult. We use this information, together with invitation and account identifiers, to check eligibility, manage account access and send necessary service notices. As a rule, we only confirm that you have reached the age of majority; we do not ask for your full date of birth or identity documents.
+
+When you use molecular analysis, we process the molecular structures, SMILES strings and other text you type or paste, together with generated results, task times, task identifiers and necessary error information. We use this information to perform calculations, deliver results and resolve related issues. Although the current product does not require file uploads, content you type or paste is still submitted to the service.
+
+When you contact us or report a problem, we use your contact details, description of the issue and correspondence to respond, handle complaints or fix defects. Please provide only what is needed to resolve the issue. If someone else provides your information, we first check that collection meets legal requirements and inform you of its source as required by law.
+
+Visiting the website or using the product may generate records of IP addresses, access times, browser and device types, request status, unusual sign-in activity and errors. We use these necessary records only to operate and secure the service, prevent misuse and troubleshoot problems. We do not log passwords or copy all free-text content into technical logs by default for troubleshooting. Section 4 explains cookies and similar technologies.
+
+When you accept an agreement or make an authorisation choice, we retain the relevant account or invitation identifier, the actual time of acceptance, the versions of the agreement and notices, the contract language, your selections and any later changes or withdrawals. These records help establish what you were told and what you chose, manage access and resolve disputes. The product currently has no audit feature; we must still retain necessary acceptance evidence and security records as required by law.
+
+This beta does not require sensitive personal information, such as patient or research-subject information, health, genetic or financial information, or anyone else's identity details. Please do not include these in your inputs or support messages. If you submit them by mistake, contact the Privacy Officer. We will restrict further use and, depending on the circumstances and legal requirements, delete or return the information or retain necessary evidence.
+
+## 2 Your consent and choices
+
+This Policy explains how we handle personal information. Reading it, accepting the Beta Agreement or choosing a contract language does not mean you consent to every optional use. We collect and use personal information only for identified, lawful and necessary purposes. We use a form of consent appropriate to the sensitivity of the information and your reasonable expectations. We process information without consent only where, and to the extent, the law expressly permits.
+
+When we ask for consent, we explain what information is involved, why we need it, who will process it and any reasonably foreseeable material consequences. Written consent requests are presented separately from other information, and we obtain express consent for sensitive personal information as required by law. Before changing an existing purpose or adding a purpose that has not been validly authorised, we explain the change and obtain fresh consent where required.
+
+You can refuse or withdraw optional authorisations and continue to use the basic beta features. If information is genuinely necessary to identify an account, perform a security check or provide a feature you request, refusing it may prevent that feature from working. We will explain why. We do not make participation conditional on providing unrelated information. Withdrawal does not affect processing that was lawful before withdrawal, and records that must be retained by law will still be kept.
+
+We do not sell or rent personal information, or use it for behavioural advertising, cross-site tracking or a service provider's own model training. Joining the beta does not automatically subscribe you to marketing emails. If we later introduce optional marketing or other new uses, we will first meet the applicable notice and consent requirements and provide an easy way to opt out.
+
+## 3 Product evaluation and model training
+
+Under Clause 7.3 of the Syntherisk Beta Use and Confidentiality Agreement that you have validly accepted, we may use "Eligible Test Data" under a non-exclusive, royalty-free licence for internal accuracy evaluation, regression testing, defect analysis and calibration of scoring scales and thresholds for Syntherisk products. Eligible Test Data consists only of public, non-sensitive inputs and corresponding outputs that you are entitled to license, together with error labels and quality scores meeting the same conditions. It must not contain personal information or confidential information belonging to the Participant or a third party, or be subject to third-party restrictions on use. Before evaluation, we verify sources and usage rights and exclude ineligible content. This authorisation applies only during the Beta Agreement and for three years after its termination. It does not cover model training or fine-tuning.
+
+Accounts, email addresses, IP addresses and task records that can be linked to an individual are not Eligible Test Data. Removing a name or replacing it with a number does not necessarily make information non-personal. We treat information as anonymous only after lawful anonymisation and risk assessment, and only if it meets the legal standard under which an individual can no longer reasonably be identified. Otherwise, this Policy continues to apply.
+
+Under Clause 7.4 of the Beta Agreement, model training or fine-tuning requires separate, express, verifiable and optional authorisation from you. Accepting the Beta Agreement, reading this Policy or choosing a contract language does not provide that authorisation. We will first provide a separate Model Training Notice and retain authorisation records. Any checkbox will be unchecked by default. The Notice will explain the data involved, the purposes and methods of training, service providers, processing locations, retention periods, withdrawal channels, and how already-trained models will be handled after withdrawal, including residual risks. Training will not begin until the Notice, authorisation records and withdrawal controls are ready.
+
+Training authorisation covers only Eligible Test Data that you are entitled to license. It excludes personal information and does not allow service providers to use the data to train models for themselves or other customers. Refusing or withdrawing authorisation does not affect basic beta features. After withdrawal, we stop using the relevant data for subsequent training. Already-trained models are handled under arrangements disclosed to you in advance that are legally valid; we cannot guarantee that the data's influence can immediately be removed from a model.
+
+Molecular analysis and quality scores concern molecules or research tasks. This beta does not use personal information to make decisions about individuals based exclusively on automated processing, including decisions on eligibility to participate. If we introduce such features, we will give the notices required by law, explain the personal information used and the main factors, parameters and reasons for the decision, and allow you to correct information and make submissions to a person authorised to review the decision.
+
+## 4 Cookies and similar technologies
+
+The website may use cookies or browser local storage to maintain sign-in sessions, carry out security checks or remember your language and privacy choices. We use these technologies only when the relevant feature is enabled and they are necessary, and explain their purposes, duration and recipients. You can manage or delete them in your browser, but disabling necessary functions may affect sign-in or prevent the website from remembering your choices.
+
+Non-essential analytics, advertising, location and profiling technologies are disabled by default for this beta. If we later need them, we will first explain what they do, what information they collect, who receives it and how you can control them. You will be asked to actively enable them or give consent as required by law. We do not use preselected boxes or a lack of response as a substitute for your choice. Refusing non-essential technologies does not affect basic beta features. Privacy settings offered by the product use the highest level of protection by default, as required by law.
+
+## 5 Who can access your information
+
+Company personnel may access personal information only where their work requires it. For example, account administrators handle invitations and permissions, technical and support staff resolve operational issues, and the Privacy Officer handles requests and complaints. Personnel responsible for legal or security matters may also need information to address a specific dispute or incident. Each person's access is limited to their duties and is subject to confidentiality and purpose restrictions.
+
+Service providers may support certain features, including website hosting, cloud infrastructure, databases, authentication and email, computing or model interfaces, technical support and security. We provide only the information needed for the work involved. Account and email services use necessary identity and contact information; computing or model interfaces process task content and necessary identifiers; and hosting and security services may process technical records. Providers unrelated to the features you use do not receive your information merely because they provide services to us.
+
+Before entrusting information to a service provider, we set out requirements in a written contract covering purposes, confidentiality, security, subcontracting, retention, deletion, incident notification and verification, and restrict use for the provider's own purposes. We remain accountable for information under our control after entrusting its processing to a provider. Legal, accounting and other professional advisers receive information only where needed for a specific matter and permitted by law.
+
+Disclosing personal information to other parties requires the appropriate consent or a reason expressly permitted or required by law, such as responding to valid legal process, meeting statutory reporting obligations or addressing an emergency covered by law. Where financing, a merger or a business transfer involves personal information, we disclose it only as legally permitted and necessary, with specific confidentiality and use restrictions. If a transaction does not proceed or the information is no longer needed, it must be returned or destroyed as required by law. After completion, notice is given as legally required.
+
+## 6 Processing outside Québec
+
+Service providers and their subcontractors may store, process or remotely access personal information outside Québec, including in other Canadian provinces or other countries. Information therefore may not remain exclusively in Québec or Canada. It may also be subject to the laws of the place where it is processed and to lawful requests from local governments or courts.
+
+Before disclosing personal information outside Québec, or entrusting an organisation there with collecting, using, disclosing or retaining it, we complete the legally required privacy impact assessment, confirm that the information will receive adequate protection, and enter into a written agreement reflecting the assessment and risk mitigation measures. Required notice and consent procedures must also be completed first. We do not enable the processing until these conditions are met. You can contact the Privacy Officer for information about recipient categories, processing locations and safeguards relevant to your information.
+
+## 7 Retention and deletion
+
+We retain personal information only for as long as needed for the purposes we have explained. The periods below are the defaults for this beta. Information is deleted when they expire unless a legal requirement, preservation for a specific dispute or another lawful and necessary reason justifies keeping it longer. You may also request earlier deletion under Section 9. We will explain what can be deleted and what must still be retained by law.
+
+Invitations and account information: We delete information for unactivated invitations within 30 days after the invitation expires. Ordinary account information is deleted within 30 days after you leave the beta or this beta round ends, whichever occurs first. Evidence of agreement acceptance is retained for the separate period below; it does not justify keeping the entire account or all tasks.
+
+Task inputs and outputs: These are retained for no more than 30 days after task completion to deliver results and address related problems. Necessary technical records are retained for no more than 90 days. Support and complaint correspondence is normally kept for 12 months after the matter closes. Portions relating to statutory rights requests or requiring further preservation are kept for the legally required or specifically necessary period.
+
+Acceptance and choice records: During your participation and for three years after it ends, we retain the minimum records needed to establish notices, agreement acceptance, authorisations and withdrawals. The three-year period applies only to this necessary evidence, not to all personal information. Information that is no longer needed is deleted sooner.
+
+Legal requirements and special circumstances: Information used to make a decision about an individual is retained for at least one year after the decision. Information in the confidentiality incident register is kept for at least five years after the date or period when the Company became aware of the incident. If legal or regulatory requirements, or a specific dispute, require other material to be preserved, we retain only what is necessary, restrict other uses and dispose of it under this Policy once the reason for retention ends.
+
+Deletion and backups: Once we confirm what can be deleted, information in live systems is normally removed within 30 days. Corresponding backup content is removed through backup rotation within a maximum of 90 days after deletion from live systems and is not used for ordinary business in the meantime. If a backup is restored, the relevant deletion restrictions are reapplied. Where the law requires earlier action, we comply. Technical deletion schedules do not extend statutory deadlines for responding to rights requests.
+
+Eligible non-personal test data is handled under Section 3 and valid authorisations. Information that can still identify an individual remains subject to personal information retention periods, even if a name is replaced with a number, it is temporarily separated from an account or it is classified as research and development material. Information that does not meet the legal anonymisation standard cannot be treated as deleted or outside personal information protections.
+
+## 8 Security and incident response
+
+We use administrative, physical and technical safeguards appropriate to the sensitivity, purposes, quantity, distribution and storage of personal information, and restrict access and unnecessary copying. The Privacy Officer oversees retention, destruction, request handling and complaint procedures. Information systems and electronic service projects involving personal information undergo privacy impact assessments where required by law, with safeguards considered during design.
+
+If a confidentiality incident occurs, or we have reasonable grounds to believe one has occurred, such as unauthorised access, use, disclosure or loss of personal information, we take reasonable steps to control the risk, investigate the cause and prevent recurrence, and document our response. Where there is a risk of serious injury, we promptly notify the regulator and affected individuals as required by Québec law. Where PIPEDA applies, we also meet its reporting, notification and record-keeping obligations. Notices include the facts, risks, response measures and contact details required by law.
+
+Online services cannot eliminate every risk. Please protect your sign-in credentials, submit only material needed for testing that you are entitled to provide, and tell us promptly if you notice unusual activity. The Company remains responsible for its legal safeguards obligations, and these reminders do not limit your complaint or remedy rights.
+
+## 9 Managing your personal information
+
+You may send a written request to the Privacy Officer to confirm whether we hold personal information about you, access it or obtain a copy. You may also ask about its source, purposes, categories of personnel with access and recipients, and retention periods. If information is inaccurate, incomplete or equivocal, or was collected, disclosed or retained contrary to legal requirements, you may request correction or other appropriate measures in accordance with the law.
+
+Where the legal conditions are met, you may request the computerised personal information we collected from you in a structured, commonly used technological format, or ask us to transfer it to a recipient you designate who is legally authorised to collect it. This right does not automatically extend to information we created or inferred and is subject to legal limits, including serious practical difficulties. The intellectual property provisions in the Beta Agreement do not exclude your statutory personal information rights.
+
+You may withdraw consent to optional processing or request deletion of information that is no longer needed or may no longer lawfully be retained. If some information must still be kept by law, we will explain why, for how long or how that period is determined, and the limits on its use. For information already made public, you may also request that dissemination cease, or that information be de-indexed or re-indexed, where the legal conditions are met.
+
+We handle access and correction requests as soon as possible and respond in writing no later than 30 days after receiving the request. Where needed, we help you clarify it. Other requests are also handled promptly under applicable law. Identity verification or internal forwarding does not automatically restart the statutory deadline. If we cannot grant all or part of a request, we explain the reasons, the applicable legal provisions, and the available remedies and time limits.
+
+Access to personal information is generally free. If the law permits reasonable reproduction, transcription or transmission charges, we tell you the estimated amount in advance. Making a privacy request, refusing an optional use or lawfully complaining does not remove eligibility for basic beta features unrelated to the matter.
+
+## 10 Complaints and regulatory remedies
+
+If you believe we have handled personal information contrary to this Policy or the law, you can complain using the email address or website contact option at the beginning of this document. Please identify the relevant account or provide contact details, explain the issue and tell us how you would like it resolved. The Privacy Officer investigates, records the outcome and explains the decision and any corrective action. Any part involving an access or correction request remains subject to the statutory deadline.
+
+You may also seek a remedy from the Commission d'accès à l'information du Québec (CAI) as provided by law. For matters within PIPEDA's scope, you may contact the Office of the Privacy Commissioner of Canada (OPC). Please check the relevant authority's eligibility requirements, procedures and deadlines. Our internal process neither replaces regulatory remedies nor extends statutory time limits.
+
+Official resources: CAI privacy rights and remedies; OPC privacy concerns and complaints.
+
+## 11 Policy updates and related documents
+
+Personal information must be handled in accordance with applicable law, this Policy and the notices given at collection. The licence to evaluate non-personal test data in Clause 7.3 of the Beta Agreement, the separate model training authorisation in Clause 7.4, and the Agreement's confidentiality and intellectual property provisions do not provide additional authorisation to process personal information. Third-party websites apply their own privacy policies when processing information independently. For processing we entrust to service providers, a provider's policy does not replace the Company's responsibilities.
+
+We publish this Policy and explanations of revisions on the website, identify the version and update date, and provide a readable, savable text before collecting the relevant information. If a revision affects purposes, sharing, processing locations or other important rights or interests, we give appropriate notice before implementation and obtain fresh consent where required by law. Updating a webpage, your continued use or your failure to respond to a notice cannot replace new consent required by law.
+'''
 
 [fr]
 eyebrow = "À lire avant de commencer"
 title = "Convention d'utilisation et de confidentialité pour l'essai bêta"
 intro = "Avant de participer à l'essai bêta Syntherisk, veuillez lire l'intégralité de la Convention d'utilisation et de confidentialité pour l'essai bêta ainsi que la Politique de confidentialité applicable à cet accès. Cet essai gratuit, sur invitation, est réservé à la recherche et à l'évaluation à des fins non commerciales."
 read_full = "Lire la Convention au complet"
+note = "Pour toute question relative à la confidentialité, pour demander l'accès à vos renseignements personnels, leur rectification ou leur suppression, ou pour déposer une plainte, écrivez à admin@syntherisk.com. Vous pouvez aussi utiliser le point de contact du site de la Société en demandant que votre message soit transmis au responsable de la protection des renseignements personnels. Lorsque vous nous contactez, veuillez indiquer votre compte ou votre lien avec la Société, décrire votre demande et préciser comment vous joindre. Nous pourrons vous demander les renseignements supplémentaires nécessaires pour vérifier votre identité ou traiter la demande. N'envoyez pas de mot de passe, de document d'identité complet, de coordonnées bancaires ni de contenu de recherche sans rapport avec la question."
 accept = "Accepter la Convention et accéder à l'essai"
 decline = "Refuser et quitter"
 footer = "Fermer la fenêtre ou refuser ne vaut pas acceptation."
 full_title = "Syntherisk Convention d'utilisation et de confidentialité pour l'essai bêta"
+privacy_button = "Politique de confidentialité"
+privacy_title = "Syntherisk Politique de confidentialité"
 summary = [
   { label = "Limites de la version", text = "La version actuelle ne comporte aucune fonction d'audit. Les résultats doivent être vérifiés de manière indépendante et ne doivent pas servir directement de fondement à des expériences, à la production ou à d'autres décisions pratiques." },
   { label = "Droits conservés", text = "La Société conserve ses droits sur ses technologies, ses modèles et les améliorations qu'elle développe légalement." },
@@ -333,6 +578,7 @@ summary = [
 checkboxes = [
   { key = "accept", label = "Acceptation de la Convention", text = "J'ai lu et j'accepte la Convention d'utilisation et de confidentialité pour l'essai bêta." },
   { key = "language", label = "Choix de la langue du contrat", text = "Je choisis expressément de conclure la présente Convention en français. Ce choix n'emporte aucune renonciation à des droits linguistiques auxquels la loi interdit de renoncer." },
+  { key = "privacy", label = "Politique de confidentialité", text = "J'ai lu et compris la Politique de confidentialité." },
 ]
 full_text = '''
 ## Article 1 Parties et documents contractuels
@@ -466,4 +712,121 @@ full_text = '''
 12.3 Pour les Participants au Canada, en Chine continentale et à Taïwan, la Convention n'emporte aucune renonciation aux protections impératives applicables en matière de consommation, de renseignements personnels, de compétence légale ou d'autres matières. Lorsque le traitement déclenche des exigences locales d'information particulière, de consentement distinct, de désignation d'un représentant ou de procédures transfrontalières, la Société doit les respecter avant d'agir. L'acceptation ordinaire de l'essai ne remplace pas ces procédures. Le choix du droit québécois n'exclut pas les autres règles impératives et ne garantit pas que les différends ne puissent être portés qu'au Québec.
 
 12.4 La présente version française est un texte contractuel officiel pouvant être accepté directement, sans signature distincte d'un texte dans une autre langue. Le Participant choisit expressément de contracter en français au moyen de la fenêtre de consentement; la Société consent à ce choix en offrant cette option. Si les Parties souhaitent plutôt être liées par une autre version linguistique, les exigences applicables de l'article 55 de la Charte de la langue française doivent être respectées : lorsque la remise préalable du français est exigée, la Société doit d'abord fournir gratuitement la Convention et les documents connexes en français correspondant à la même révision, avant le choix exprès de l'autre langue. Les exceptions légales, notamment pour les contrats utilisés dans les relations avec l'extérieur du Québec, demeurent soumises à leurs conditions particulières et exigences de choix linguistique. La Société doit conserver les textes effectivement fournis, leur mode de remise et la preuve du choix. Une case cochée ne remplace pas la remise légalement requise du français; la langue d'interface, la nationalité ou la localisation ne remplace pas un choix exprès de langue contractuelle. Les droits linguistiques auxquels il est interdit de renoncer sont préservés; les autres textes linguistiques non valablement acceptés ne sont pas automatiquement incorporés à la Convention.
+'''
+privacy_text = '''
+Syntherisk Technology Inc. (« nous » ou la « Société ») est établie au Québec, au Canada. Cette Politique explique comment nous recueillons, utilisons et protégeons les renseignements personnels lorsque vous visitez notre site, participez à l'essai bêta ou nous contactez. Elle décrit aussi vos droits. Cette phase d'essai est gratuite, accessible sur invitation et réservée aux personnes ayant atteint l'âge de la majorité dans leur lieu de résidence.
+
+Un renseignement personnel permet de vous identifier directement ou, en le combinant avec d'autres renseignements, indirectement. Par exemple, une structure moléculaire ou une chaîne SMILES ne permet pas nécessairement d'identifier quelqu'un à elle seule. Elle peut toutefois devenir un renseignement personnel si elle est liée à un compte, à l'identité d'un chercheur ou à d'autres dossiers personnels. Cette Politique couvre aussi les renseignements personnels dont nous confions le traitement à des prestataires.
+
+Nous traitons les renseignements personnels conformément à la Loi sur la protection des renseignements personnels dans le secteur privé du Québec et aux autres lois applicables. La Loi sur la protection des renseignements personnels et les documents électroniques du Canada (LPRPDE) peut aussi s'appliquer aux activités commerciales et aux flux interprovinciaux ou internationaux de renseignements. Nous en respectons les exigences applicables. Cette Politique ne limite aucun droit auquel vous ne pouvez renoncer en vertu des lois de votre lieu de résidence.
+
+## 1 Les renseignements que nous recueillons
+
+Les renseignements recueillis proviennent de ce que vous nous fournissez, des traces de nos échanges et des données techniques nécessaires au fonctionnement du service. Avant la collecte, ou au moment prévu par la loi, nous expliquons les fins poursuivies et indiquons quels renseignements sont nécessaires à une fonctionnalité. Les renseignements recueillis dépendent des fonctionnalités et des moyens de communication que vous utilisez.
+
+Lorsque vous acceptez une invitation, créez un compte ou vous connectez, nous pouvons vous demander une adresse courriel, un nom d'affichage et la confirmation de votre majorité. Nous utilisons ces renseignements, ainsi que les identifiants d'invitation et de compte, pour vérifier votre admissibilité, gérer vos droits d'accès et envoyer les avis de service nécessaires. En principe, nous vérifions seulement que vous avez atteint l'âge de la majorité, sans demander votre date de naissance complète ni de document d'identité.
+
+Lorsque vous utilisez l'analyse moléculaire, nous traitons les structures moléculaires, les chaînes SMILES et les autres textes que vous saisissez ou collez, ainsi que les résultats générés, les heures et identifiants des tâches et les renseignements d'erreur nécessaires. Ils servent à effectuer les calculs, à vous fournir les résultats et à résoudre les problèmes connexes. Même si le produit actuel ne nécessite pas le téléversement de fichiers, le contenu saisi ou collé est bien transmis au service.
+
+Lorsque vous nous contactez ou signalez un problème, nous utilisons vos coordonnées, la description du problème et nos échanges pour répondre, traiter les plaintes ou corriger des défauts. Veuillez ne fournir que ce qui est nécessaire à la résolution du problème. Si une autre personne nous fournit vos renseignements, nous vérifions d'abord que la collecte respecte la loi et vous en indiquons la source selon les exigences légales.
+
+La visite du site ou l'utilisation du produit peut générer des données sur l'adresse IP, l'heure d'accès, le navigateur, le type d'appareil, l'état des requêtes, les anomalies de connexion et les erreurs. Nous utilisons ces données nécessaires uniquement pour faire fonctionner et sécuriser le service, prévenir les abus et résoudre les problèmes. Le dépannage n'entraîne pas par défaut l'enregistrement des mots de passe ni la copie de tous les textes libres dans les journaux techniques. La section 4 explique les témoins et les technologies similaires.
+
+Lorsque vous acceptez une convention ou faites un choix d'autorisation, nous conservons l'identifiant du compte ou de l'invitation, le moment réel de l'acceptation, les versions de la convention et des avis, la langue contractuelle, vos choix, ainsi que les modifications ou retraits ultérieurs. Ces traces permettent de vérifier les explications reçues et les choix faits, de gérer les accès et de régler les différends. Le produit ne dispose actuellement d'aucune fonction d'audit; nous devons néanmoins conserver les preuves d'acceptation et les données de sécurité nécessaires conformément à la loi.
+
+Cet essai ne nécessite aucun renseignement personnel sensible, notamment sur des patients ou des participants à la recherche, sur la santé, la génétique ou les finances, ni de renseignements d'identité concernant d'autres personnes. Veuillez ne pas les inclure dans vos saisies ou vos demandes d'assistance. En cas d'envoi accidentel, contactez le responsable de la protection des renseignements personnels. Nous limiterons toute utilisation ultérieure et, selon la situation et les exigences légales, supprimerons ou retournerons les renseignements, ou conserverons les éléments de preuve nécessaires.
+
+## 2 Votre consentement et vos choix
+
+Cette Politique explique comment nous traitons les renseignements personnels. La lire, accepter la Convention d'essai bêta ou choisir une langue contractuelle ne signifie pas consentir à toutes les utilisations facultatives. Nous recueillons et utilisons les renseignements personnels uniquement à des fins déterminées, légitimes et nécessaires. La forme du consentement tient compte de la sensibilité des renseignements et de vos attentes raisonnables. Nous ne les traitons sans consentement que dans les cas et les limites expressément permis par la loi.
+
+Lorsque nous demandons votre consentement, nous expliquons les renseignements visés, les fins poursuivies, les destinataires du traitement et les conséquences importantes raisonnablement prévisibles. Les demandes écrites de consentement sont présentées séparément des autres informations; les renseignements sensibles font l'objet d'un consentement exprès lorsque la loi l'exige. Avant de modifier une fin existante ou d'ajouter une fin non valablement autorisée, nous vous expliquons le changement et obtenons un nouveau consentement lorsque requis.
+
+Vous pouvez refuser ou retirer une autorisation facultative tout en continuant à utiliser les fonctionnalités de base de l'essai. Si un renseignement est réellement nécessaire pour identifier un compte, effectuer une vérification de sécurité ou fournir une fonctionnalité demandée, votre refus peut empêcher son fonctionnement. Nous vous en expliquerons la raison. Nous ne conditionnons pas la participation à la fourniture de renseignements sans rapport avec le service. Le retrait n'affecte pas les traitements licites déjà effectués, et les dossiers dont la loi exige la conservation restent conservés.
+
+Nous ne vendons ni ne louons les renseignements personnels. Nous ne les utilisons pas à des fins de publicité comportementale, de suivi entre sites ou d'entraînement de modèles pour le compte propre d'un prestataire. La participation à l'essai ne vous abonne pas automatiquement à des courriels promotionnels. Si nous proposons plus tard des communications promotionnelles facultatives ou de nouvelles utilisations, nous respecterons d'abord les exigences d'information et de consentement et offrirons un moyen simple de se retirer.
+
+## 3 Évaluation du produit et entraînement des modèles
+
+Conformément au paragraphe 7.3 de la Convention d'utilisation et de confidentialité pour l'essai bêta de Syntherisk que vous avez valablement acceptée, nous pouvons utiliser les « Données d'essai admissibles » dans le cadre d'une licence non exclusive et sans redevances pour l'évaluation interne de l'exactitude, les tests de régression, l'analyse des défauts et la calibration des échelles et seuils de notation des produits Syntherisk. Ces données comprennent uniquement les saisies publiques et non sensibles et les résultats correspondants que vous avez le droit de concéder sous licence, ainsi que les étiquettes d'erreur et les notes de qualité remplissant les mêmes conditions. Elles ne doivent contenir aucun renseignement personnel ni renseignement confidentiel du Participant ou d'un tiers, et ne doivent pas être soumises à des restrictions d'utilisation imposées par un tiers. Nous vérifions les sources et les droits d'utilisation avant l'évaluation et excluons les contenus inadmissibles. Cette autorisation vaut uniquement pendant la Convention et durant les trois années suivant sa fin. Elle ne couvre ni l'entraînement ni l'ajustement des modèles.
+
+Les comptes, les adresses courriel, les adresses IP et les historiques de tâches pouvant être associés à une personne ne constituent pas des Données d'essai admissibles. Retirer un nom ou le remplacer par un numéro ne suffit pas nécessairement à enlever le caractère personnel des renseignements. Nous ne les traitons comme anonymes qu'après une anonymisation conforme à la loi, une évaluation des risques et l'atteinte de la norme légale selon laquelle il n'est plus raisonnablement possible d'identifier une personne. Sinon, cette Politique continue de s'appliquer.
+
+Le paragraphe 7.4 de la Convention exige une autorisation facultative, expresse et vérifiable, donnée séparément, pour l'entraînement ou l'ajustement des modèles. Accepter la Convention, lire cette Politique ou choisir une langue contractuelle ne constitue pas cette autorisation. Nous fournirons au préalable un Avis sur l'entraînement des modèles distinct et conserverons les preuves d'autorisation. Toute case sera décochée par défaut. L'Avis précisera les données visées, les fins et méthodes d'entraînement, les prestataires, les lieux de traitement, les durées de conservation, les moyens de retrait, le traitement des modèles déjà entraînés après un retrait et les risques résiduels. Aucun entraînement ne commencera avant la mise en place de l'Avis, des preuves d'autorisation et des mécanismes de retrait.
+
+L'autorisation d'entraînement porte uniquement sur les Données d'essai admissibles que vous avez le droit de concéder sous licence. Elle exclut les renseignements personnels et ne permet pas aux prestataires d'utiliser ces données pour entraîner des modèles pour eux-mêmes ou pour d'autres clients. Le refus ou le retrait n'affecte pas les fonctionnalités de base de l'essai. Après un retrait, nous cessons d'utiliser les données concernées pour les entraînements ultérieurs. Les modèles déjà entraînés sont traités selon les modalités communiquées au préalable et juridiquement valides; nous ne garantissons pas de pouvoir supprimer immédiatement l'influence des données sur un modèle.
+
+L'analyse moléculaire et les notes de qualité portent sur des molécules ou des tâches de recherche. Cet essai n'utilise pas de renseignements personnels pour prendre des décisions concernant une personne sur la base exclusive d'un traitement automatisé, y compris des décisions d'admissibilité. Si nous ajoutons de telles fonctionnalités, nous fournirons les avis requis par la loi, expliquerons les renseignements utilisés ainsi que les principaux facteurs, paramètres et raisons de la décision, et vous permettrons de faire rectifier les renseignements et de présenter vos observations à une personne habilitée à réviser la décision.
+
+## 4 Témoins et technologies similaires
+
+Le site peut utiliser des témoins ou le stockage local du navigateur pour maintenir une session, effectuer des vérifications de sécurité ou mémoriser vos choix de langue et de confidentialité. Nous n'utilisons ces technologies que lorsque la fonctionnalité est activée et qu'elles sont nécessaires, en précisant leurs fins, leur durée et leurs destinataires. Vous pouvez les gérer ou les supprimer dans votre navigateur. La désactivation des fonctions nécessaires peut toutefois affecter la connexion ou empêcher le site de mémoriser vos choix.
+
+Les technologies non nécessaires d'analyse, de publicité, de localisation et de profilage sont désactivées par défaut pour cet essai. Si nous souhaitons les utiliser plus tard, nous expliquerons d'abord leur fonctionnement, les renseignements recueillis, les destinataires et les moyens de contrôle. Vous devrez les activer vous-même ou y consentir selon la loi. Nous ne remplaçons pas votre choix par des cases précochées ou par une absence de réponse. Refuser les technologies non nécessaires n'affecte pas les fonctionnalités de base. Les paramètres de confidentialité offerts par le produit assurent par défaut le plus haut niveau de protection, conformément à la loi.
+
+## 5 Qui peut accéder à vos renseignements
+
+Le personnel de la Société n'accède aux renseignements personnels que lorsque ses fonctions le nécessitent. Par exemple, les responsables des comptes gèrent les invitations et les permissions, les équipes techniques et d'assistance règlent les problèmes de fonctionnement, et le responsable de la protection des renseignements personnels traite les demandes et les plaintes. Le personnel chargé des questions juridiques ou de sécurité peut aussi avoir besoin de certains renseignements pour un différend ou un incident précis. Les accès de chacun se limitent à ses tâches et sont soumis à des obligations de confidentialité et à des restrictions d'utilisation.
+
+Des prestataires peuvent assurer certaines fonctions : hébergement du site, infrastructure infonuagique, bases de données, authentification, courriel, interfaces de calcul ou de modèles, assistance technique et sécurité. Nous ne leur fournissons que les renseignements nécessaires au travail confié. Les services de compte et de courriel utilisent les renseignements d'identité et les coordonnées nécessaires; les interfaces de calcul ou de modèles traitent le contenu des tâches et les identifiants nécessaires; les services d'hébergement et de sécurité peuvent traiter des données techniques. Les prestataires sans lien avec les fonctionnalités que vous utilisez ne reçoivent pas vos renseignements du seul fait qu'ils nous fournissent des services.
+
+Avant de confier des renseignements à un prestataire, nous fixons dans un contrat écrit les exigences relatives aux fins, à la confidentialité, à la sécurité, à la sous-traitance, à la conservation, à la suppression, au signalement des incidents et aux vérifications, et limitons l'utilisation à ses propres fins. Nous demeurons responsables des renseignements sous notre contrôle après en avoir confié le traitement. Les conseillers juridiques, comptables et autres professionnels ne reçoivent les renseignements que si un dossier précis le nécessite et si la loi le permet.
+
+La communication de renseignements personnels à d'autres parties nécessite le consentement approprié ou un motif expressément permis ou exigé par la loi, par exemple une procédure juridique valide, une obligation légale de signalement ou une situation d'urgence prévue par la loi. Lorsqu'un financement, une fusion ou un transfert d'entreprise implique des renseignements personnels, nous ne les communiquons que dans la mesure nécessaire et permise, avec des obligations spécifiques de confidentialité et des restrictions d'utilisation. Si la transaction échoue ou si les renseignements ne sont plus nécessaires, ils sont retournés ou détruits conformément à la loi. Après la transaction, les avis légalement requis sont transmis.
+
+## 6 Traitement à l'extérieur du Québec
+
+Les prestataires et leurs sous-traitants peuvent conserver ou traiter des renseignements personnels à l'extérieur du Québec, ou y accéder à distance depuis un tel lieu, notamment depuis d'autres provinces canadiennes ou d'autres pays. Les renseignements ne restent donc pas nécessairement exclusivement au Québec ou au Canada. Ils peuvent aussi être soumis aux lois du lieu de traitement et à des demandes légales de gouvernements ou de tribunaux locaux.
+
+Avant de communiquer des renseignements personnels à l'extérieur du Québec ou d'y confier leur collecte, leur utilisation, leur communication ou leur conservation à une organisation, nous réalisons l'évaluation des facteurs relatifs à la vie privée requise par la loi. Nous vérifions que les renseignements bénéficieront d'une protection adéquate et concluons une entente écrite tenant compte de l'évaluation et des mesures d'atténuation des risques. Les démarches d'information et de consentement requises doivent également être terminées avant le traitement. Celui-ci n'est pas activé tant que ces conditions ne sont pas remplies. Vous pouvez contacter le responsable pour connaître les catégories de destinataires, les lieux de traitement et les mesures de protection concernant vos renseignements.
+
+## 7 Conservation et suppression
+
+Nous conservons les renseignements personnels uniquement pendant la durée nécessaire aux fins expliquées. Les durées ci-dessous sont celles prévues par défaut pour cet essai. Les renseignements sont supprimés à leur échéance, sauf obligation légale, conservation nécessaire à un différend précis ou autre motif légitime et nécessaire. Vous pouvez aussi demander une suppression anticipée selon la section 9. Nous vous expliquerons quels renseignements peuvent être supprimés et lesquels doivent encore être conservés en vertu de la loi.
+
+Invitations et comptes : Les renseignements liés à une invitation non activée sont supprimés dans les 30 jours suivant son expiration. Les renseignements ordinaires du compte sont supprimés dans les 30 jours suivant votre départ de l'essai ou la fin de cette phase d'essai, selon la première éventualité. Les preuves d'acceptation de la Convention suivent la durée distincte ci-dessous; leur conservation ne justifie pas celle de l'ensemble du compte ou des tâches.
+
+Saisies et résultats des tâches : Ils sont conservés au plus 30 jours après l'achèvement de la tâche pour fournir les résultats et résoudre les problèmes connexes. Les données techniques nécessaires sont conservées au plus 90 jours. Les échanges d'assistance et de plainte sont normalement conservés pendant 12 mois après la clôture du dossier. Les éléments liés à l'exercice de droits légaux ou devant être préservés plus longtemps le sont pendant la durée légale ou spécifiquement nécessaire.
+
+Preuves d'acceptation et de choix : Pendant votre participation et durant les trois années suivant sa fin, nous conservons les éléments minimaux nécessaires pour établir les avis fournis, l'acceptation de la Convention, les autorisations et les retraits. Cette durée de trois ans ne concerne que les preuves nécessaires, et non l'ensemble des renseignements personnels. Les éléments devenus inutiles sont supprimés plus tôt.
+
+Obligations légales et situations particulières : Les renseignements utilisés pour prendre une décision concernant une personne sont conservés au moins un an après celle-ci. Les renseignements du registre des incidents de confidentialité sont conservés pendant au moins cinq ans après la date ou la période où la Société a pris connaissance de l'incident. Si la loi, une exigence réglementaire ou un différend précis impose la conservation d'autres éléments, nous ne gardons que le nécessaire, limitons les autres utilisations et les traitons selon cette Politique lorsque le motif de conservation disparaît.
+
+Suppression et sauvegardes : Après confirmation du périmètre pouvant être supprimé, les renseignements des systèmes actifs sont normalement effacés dans les 30 jours. Les éléments correspondants des sauvegardes sont supprimés au fil de leur rotation, au plus tard 90 jours après leur effacement des systèmes actifs. Entre-temps, ils ne servent pas aux activités courantes. En cas de restauration, les restrictions de suppression sont réappliquées. Si la loi exige une action plus rapide, nous la respectons. Les délais techniques d'effacement ne prolongent pas les délais légaux de réponse aux demandes d'exercice de droits.
+
+Les données d'essai admissibles non personnelles sont traitées selon la section 3 et les autorisations valides. Tant qu'un renseignement permet encore d'identifier une personne, les durées de conservation des renseignements personnels continuent de s'appliquer, même si un nom est remplacé par un numéro, si les données sont temporairement séparées du compte ou si elles sont classées comme matériel de recherche et développement. Sans atteindre la norme légale d'anonymisation, les renseignements ne peuvent être considérés comme supprimés ou soustraits à la protection des renseignements personnels.
+
+## 8 Sécurité et gestion des incidents
+
+Nous appliquons des mesures administratives, physiques et techniques adaptées à la sensibilité, aux fins, à la quantité, à la répartition et au support des renseignements personnels, et limitons les accès et les copies inutiles. Le responsable de la protection des renseignements personnels supervise la conservation, la destruction, le traitement des demandes et les plaintes. Les projets de systèmes d'information ou de services électroniques impliquant des renseignements personnels font l'objet des évaluations des facteurs relatifs à la vie privée requises par la loi, en tenant compte des mesures de protection dès la conception.
+
+Lorsqu'un incident de confidentialité survient, ou que nous avons des motifs raisonnables de croire qu'il est survenu, notamment un accès, une utilisation ou une communication non autorisés, ou une perte de renseignements personnels, nous prenons des mesures raisonnables pour limiter les risques, rechercher les causes, éviter une répétition et documenter notre intervention. En cas de risque de préjudice sérieux, nous avisons rapidement l'autorité compétente et les personnes concernées, conformément au droit québécois. Lorsque la LPRPDE s'applique, nous respectons aussi ses obligations de déclaration, de notification et de tenue de dossiers. Les avis présentent les faits, les risques, les mesures prises et les coordonnées exigés par la loi.
+
+Les services en ligne ne peuvent éliminer tous les risques. Veuillez protéger vos identifiants de connexion, ne transmettre que les contenus nécessaires à l'essai que vous avez le droit de fournir et nous signaler rapidement toute anomalie. La Société demeure tenue de respecter ses obligations légales de protection. Ces recommandations ne limitent ni votre droit de plainte ni vos recours.
+
+## 9 Gérer vos renseignements personnels
+
+Vous pouvez adresser une demande écrite au responsable de la protection des renseignements personnels pour savoir si nous détenons des renseignements vous concernant, y accéder ou en obtenir une copie. Vous pouvez aussi vous informer sur leur source, leurs fins, les catégories de personnel ayant accès et de destinataires, ainsi que leur durée de conservation. S'ils sont inexacts, incomplets ou équivoques, ou si leur collecte, communication ou conservation ne respecte pas la loi, vous pouvez demander leur rectification ou les autres mesures appropriées prévues par la loi.
+
+Lorsque les conditions légales sont remplies, vous pouvez demander les renseignements personnels informatisés que nous avons recueillis auprès de vous dans un format technologique structuré et couramment utilisé, ou leur transmission à un destinataire que vous désignez et qui est légalement autorisé à les recueillir. Ce droit ne s'étend pas automatiquement aux renseignements que nous avons créés ou inférés et demeure soumis aux limites légales, notamment aux difficultés pratiques sérieuses. Les clauses de propriété intellectuelle de la Convention n'écartent pas vos droits légaux sur vos renseignements personnels.
+
+Vous pouvez retirer votre consentement aux traitements facultatifs ou demander la suppression de renseignements devenus inutiles ou ne pouvant plus être légalement conservés. Si certains doivent encore être conservés, nous expliquerons le motif, la durée ou les critères permettant de l'établir, ainsi que les restrictions d'utilisation. Pour les renseignements déjà diffusés publiquement, vous pouvez aussi demander la cessation de leur diffusion, leur désindexation ou leur réindexation lorsque les conditions légales sont remplies.
+
+Nous traitons les demandes d'accès ou de rectification dès que possible et répondons par écrit au plus tard 30 jours après leur réception. Au besoin, nous vous aidons à préciser la demande. Les autres demandes sont également traitées dans les délais prévus par les lois applicables. La vérification d'identité ou la transmission interne ne fait pas automatiquement repartir le délai légal. Si nous refusons tout ou partie d'une demande, nous expliquons les motifs, les dispositions légales applicables, les recours disponibles et leurs délais.
+
+L'accès aux renseignements personnels est en principe gratuit. Si la loi permet des frais raisonnables de reproduction, de transcription ou de transmission, nous vous en indiquons le montant estimatif à l'avance. Présenter une demande relative à la confidentialité, refuser une utilisation facultative ou déposer une plainte légitime ne vous prive pas de l'accès aux fonctionnalités de base sans rapport avec cette question.
+
+## 10 Plaintes et recours
+
+Si vous estimez que nous avons traité des renseignements personnels contrairement à cette Politique ou à la loi, vous pouvez déposer une plainte à l'adresse courriel ou au point de contact du site indiqué au début du document. Veuillez préciser le compte concerné ou vos coordonnées, décrire le problème et indiquer la solution souhaitée. Le responsable de la protection des renseignements personnels examine la plainte, consigne le résultat et vous explique la décision et les mesures correctives. Toute partie concernant une demande d'accès ou de rectification demeure soumise au délai légal.
+
+Vous pouvez également exercer les recours prévus par la loi auprès de la Commission d'accès à l'information du Québec (CAI). Pour les questions relevant de la LPRPDE, vous pouvez vous adresser au Commissariat à la protection de la vie privée du Canada (CPVP). Consultez les conditions de recevabilité, les procédures et les délais de l'autorité concernée. Notre procédure interne ne remplace pas ces recours et ne prolonge pas les délais légaux.
+
+Ressources officielles : CAI droits et recours en matière de confidentialité; CPVP préoccupations et plaintes relatives à la vie privée.
+
+## 11 Mises à jour et autres documents
+
+Le traitement des renseignements personnels doit respecter les lois applicables, cette Politique et les avis fournis lors de la collecte. La licence d'évaluation de données d'essai non personnelles du paragraphe 7.3, l'autorisation distincte d'entraînement des modèles du paragraphe 7.4 et les clauses de confidentialité et de propriété intellectuelle de la Convention ne donnent aucune autorisation supplémentaire de traiter des renseignements personnels. Les sites tiers appliquent leur propre politique lorsqu'ils traitent des renseignements de manière indépendante. Pour les traitements que nous confions à des prestataires, leur politique ne remplace pas les responsabilités de la Société.
+
+Nous publions cette Politique et les explications des modifications sur le site, en indiquant la version et la date de mise à jour, et fournissons un texte lisible et pouvant être conservé avant de recueillir les renseignements concernés. Si une modification touche les fins, le partage, les lieux de traitement ou d'autres droits ou intérêts importants, nous vous en informons de manière appropriée avant sa mise en œuvre et obtenons un nouveau consentement lorsque la loi l'exige. Une simple mise à jour du site, la poursuite de votre visite ou une absence de réponse à un avis ne remplace pas ce consentement.
 '''

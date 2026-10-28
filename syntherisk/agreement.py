@@ -35,8 +35,9 @@ REQUIRED_KEYS = (
     "eyebrow", "title", "intro", "summary", "read_full", "checkboxes",
     "accept", "decline", "footer", "full_title", "full_text",
 )
-# 可以没有的键：note（说明下面的一行小字）、guardian_link 和 guardian_text（未成年人怎么申请）。V0.5 有，V0.8 没有
-OPTIONAL_KEYS = ("note", "guardian_link", "guardian_text")
+# 可以没有的键：note（按钮下面的一行小字，V0.8.1 是隐私问题的联系方式）、guardian_link 和 guardian_text（未成年人怎么申请，
+# 只有 V0.5 有）、privacy_button、privacy_title、privacy_text（隐私政策：按钮上的字、标题、全文，V0.8.1 起有）
+OPTIONAL_KEYS = ("note", "guardian_link", "guardian_text", "privacy_button", "privacy_title", "privacy_text")
 
 # 没有某种语言的内容时用哪一种（V0.8 起中、英、法三种都有）
 FALLBACK_LANGUAGE = "en"
@@ -147,4 +148,9 @@ def as_text(package: dict[str, Any], sha256: str, acceptance: dict[str, Any] | N
     # 全文里 “## ” 开头的是条标题：去掉记号，前面空一行
     for paragraph in package["full_text"].strip().split("\n\n"):
         lines += [paragraph[3:] if paragraph.startswith("## ") else paragraph, ""]
+    if package.get("privacy_text"):
+        # 隐私政策跟在协议全文后面，写法相同
+        lines += [rule, package["privacy_title"], rule, ""]
+        for paragraph in package["privacy_text"].strip().split("\n\n"):
+            lines += [paragraph[3:] if paragraph.startswith("## ") else paragraph, ""]
     return "\n".join(lines)
