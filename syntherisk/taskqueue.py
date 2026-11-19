@@ -13,16 +13,19 @@ SSE 接口从表里读出来推给前端，所以 API 和 Worker 分开部署也
     真正的活由后台去干。这个文件定义了队列的三种模式，以及“拿到一个任务以后怎么执行”（run_job）。
 
 对应 PPT 里的哪个模块、界面上的哪些按钮
-    MQ 任务队列。现在有两种任务：
+    MQ 任务队列。现在有三种任务：
       "analysis.run"      A16 开始分析（以及失败后的重跑、B11 把路线全排除后的重新搜索、重启后的恢复）
                           -> pipeline.run_analysis(ctx, analysis_id=…)
       "inventory.import"  E1 导入库存，行数超过 inventory_import.SYNC_ROW_LIMIT 的大表格
                           -> inventory_import.run_import(ctx, import_id=…)
+      "audit.run"         分析成功或重新排名以后，把结果送去 SAL 审计（AUDIT_MODE 不是 off 时才有）
+                          -> audit.run_audit(ctx, audit_id=…)
 
 谁调用它、它依赖谁
     建队列  syntherisk/main.py 的 lifespan 调 build_queue()；worker.py 自己直接建 RedisQueue
     入队    api/analyses.py（create_analysis、retry_analysis、add_exclusion）、
-            api/inventory.py（import_inventory）、syntherisk/main.py（启动时把中断的分析重新排队）
+            api/inventory.py（import_inventory）、syntherisk/main.py（启动时把中断的分析重新排队）、
+            audit/service.py 的 schedule()（"audit.run"）
     执行    进程内队列自己的线程；Redis 模式下是 worker.py 的 run_worker()
     本文件开头不导入后端的其他模块：pipeline、inventory_import 和 redis 包都是用到时才在函数里导入。
 
@@ -67,7 +70,7 @@ class TaskQueue(Protocol):
 
     enqueue(job_type, payload)
         把一个任务放进队列，立刻返回（sync 模式例外：当场跑完才返回）。
-        job_type  任务类型，必须是 job_handlers() 里登记过的："analysis.run" 或 "inventory.import"。
+        job_type  任务类型，必须是 job_handlers() 里登记过的："analysis.run"、"inventory.import" 或 "audit.run"。
         payload   交给处理函数的关键字参数，比如 {"analysis_id": "…"}。Redis 模式下要能转成 JSON。
     close()
         服务停止时调用：关掉线程池或者 Redis 连接。
@@ -84,19 +87,21 @@ def job_handlers() -> dict[str, JobHandler]:
     """任务类型 -> 处理函数 的对照表。要加一种新的后台任务，在这里登记一行。
 
     返回：
-        {"analysis.run": pipeline.run_analysis, "inventory.import": inventory_import.run_import}
-        两个处理函数的调用方式都是 函数(ctx, **参数)，成功还是失败都由它们自己写进数据库。
+        {"analysis.run": pipeline.run_analysis, "inventory.import": inventory_import.run_import,
+         "audit.run": audit.run_audit}
+        处理函数的调用方式都是 函数(ctx, **参数)，成功还是失败都由它们自己写进数据库。
     说明：
         import 写在函数里面：导入本文件时不会连带导入 pipeline 和 inventory_import
         （以及它们依赖的一长串模块），第一次执行任务时才导入。
     谁在用：
         本文件的 run_job()。
     """
-    from syntherisk import inventory_import, pipeline
+    from syntherisk import audit, inventory_import, pipeline
 
     return {
         "analysis.run": pipeline.run_analysis,
         "inventory.import": inventory_import.run_import,
+        "audit.run": audit.run_audit,
     }
 
 

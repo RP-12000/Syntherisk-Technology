@@ -120,6 +120,32 @@ def _is_reaction(node: dict[str, Any]) -> bool:
     return node.get("type") == "reaction" or bool(node.get("is_reaction"))
 
 
+def _order_like(children: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
+    """把一步反应的反应物子树，按反应表里登记的反应物顺序重新排。
+
+    为什么要排：同一步反应出现在几条路线里时，反应表只在第一次遇到时登记一次，反应物的顺序就是那一次引擎给的顺序；
+    别的路线里引擎给的顺序可能相反。排一下，路线树和反应表就总是一致的
+    （审计适配层 SAL Mapping 会逐个核对两边的顺序，对不上就整份拒收）。
+
+    参数：
+        children  转换好的反应物节点，各带一个 key14。
+        keys      反应表里这一步的 reactants（key14 的列表）。
+    返回：
+        新列表：先按 keys 的顺序放能对上的节点（同一个反应物出现两次也逐个对上），
+        对不上的（比如同一步、但盐型不同的写法）按原来的先后放在最后。
+    谁在用：
+        本文件的 _Builder.convert。
+    """
+    remaining = list(children)
+    ordered = []
+    for key in keys:
+        for position, child in enumerate(remaining):
+            if child["key14"] == key:
+                ordered.append(remaining.pop(position))
+                break
+    return ordered + remaining
+
+
 def _clean_classification(text: str | None) -> str | None:
     """AiZynthFinder 的反应类别形如 “2.1.2 Carboxylic acid + amine condensation”，去掉前面的编号。
 
@@ -254,6 +280,8 @@ class _Builder:
         if not children:
             raise RouteBuildError(i18n.tr("路线里有一步没有反应物", "A step in the route has no reactants"))
         step_key = self._reaction(entry, children, reaction_node.get("metadata") or {})
+        # 这一步可能在别的路线里先登记过：按反应表里的反应物顺序排子节点，让树和表一致（见 _order_like）
+        children = _order_like(children, self.reactions[step_key]["reactants"])
         out["children"] = [{"type": "reaction", "step_key": step_key, "children": children}]
         return out
 

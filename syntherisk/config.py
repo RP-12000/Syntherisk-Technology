@@ -250,6 +250,30 @@ class Settings(BaseSettings):
     demo_user_password: str = ""
     demo_org_name: str = "示例课题组"
 
+    # --- 审计（SAL，团队的 Audit 模型）---
+    # 分析成功以后，把结果送去 SAL 留档、核对来源；审计出错不影响分析。说明见 syntherisk/audit/__init__.py。
+    # 谁在读：audit/service.py、audit/export.py、audit/providers.py
+    # AUDIT_MODE：off（默认，不审计）/ embedded（后端进程里直接调 SAL 的 Mapping 库）/
+    #   http（调 AUDIT_BASE_URL 上的审计接口）
+    audit_mode: Literal["off", "embedded", "http"] = "off"
+    # AUDIT_SCOPE：demo_only（默认，只审计 AUDIT_DEMO_ORGS 里的课题组）/ all（所有课题组）。
+    # SAL v0.1 只收 synthetic 数据，真实用户的分析会被它拒收，所以现在不要设成 all
+    audit_scope: Literal["demo_only", "all"] = "demo_only"
+    # AUDIT_DEMO_ORGS：算作演示的课题组编号（organizations.id），逗号分开
+    audit_demo_orgs: str = ""
+    # AUDIT_DEMO_CLASSIFICATION：演示课题组的分析在 SAL 那里算哪一类数据。默认 public_non_sensitive
+    # （公开分子、公开先例）。SAL 作者确认可以之前不要改成 synthetic；本地用演示引擎测试时可以改
+    audit_demo_classification: Literal["synthetic", "public_non_sensitive"] = "public_non_sensitive"
+    # AUDIT_SAL_PATH：embedded 模式下 SAL 源码的根目录（里面有 sal_core/ 和 syntherisk_mapping/）
+    audit_sal_path: str = ""
+    # AUDIT_BASE_URL / AUDIT_TOKEN / AUDIT_TIMEOUT：http 模式下审计接口的地址、令牌（只放 .env）、超时秒数
+    audit_base_url: str = ""
+    audit_token: str = ""
+    audit_timeout: float = 30.0
+    # APP_REVISION：这一版后端代码的 git commit（40 位），审计时作为 upstream_revision 送给 SAL。
+    # 留空时自己读项目目录下的 .git；都拿不到就是 unknown
+    app_revision: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         """把 CORS_ORIGINS（逗号分隔的一串）拆成列表，去掉每一项两头的空格，丢掉空项。

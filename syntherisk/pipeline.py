@@ -27,13 +27,14 @@
     recover_interrupted()   syntherisk/main.py 启动时
     它依赖 routes.py（整理路线树）、constraints.py（合并约束）、cards.py（证据卡），
     以及 modules/ 下的 m01、m03、m04、m05、m06、m07、m09、m10、m11。
+    分析成功以后调 audit.schedule() 排审计任务（AUDIT_MODE 不是 off 时）。
 
 数据从哪来到哪去
     读  analyses 表里这次分析的 target（目标分子）、constraints（约束）、user_exclusions（用户排除的分支和试剂）；
         inventory_items（库存）、catalog_compounds（在售目录）、reaction_precedents（先例库）、
         substance_hazards（PubChem 危害缓存）；data/ 下的参考数据。第 5 阶段可能联网查 PubChem，
         第 8 阶段在配了大模型时会调大模型
-    写  analyses 表：status、current_stage、stages、attempts、error、engine、result、started_at、finished_at
+    写  analyses 表：status、current_stage、stages、attempts、execution_id、error、engine、result、started_at、finished_at
         analysis_events 表：每次进度变化一行，SSE 接口从这里读
         substance_hazards 表（第 5 阶段新查到的）、llm_calls 表（第 8 阶段的调用记录）
 
@@ -90,13 +91,14 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from syntherisk import i18n, models
+from syntherisk import audit, i18n, models
 from syntherisk.cards import build_card
 from syntherisk.constraints import Constraints, EffectiveConstraints, merge_constraints
 from syntherisk.context import AppContext
@@ -1082,8 +1084,8 @@ def run_analysis(ctx: AppContext, analysis_id: str) -> None:
     流程：
         1. 开一个会话，读出这一行。不存在，或者状态已经不是 queued / running（比如排队期间被取消了），
            就直接返回，什么都不做；
-        2. 状态改成 running，attempts 加 1，记开始时间，清掉上一轮的错误和结束时间，进度表重置，
-           发一条 status 事件，提交；
+        2. 状态改成 running，attempts 加 1，换一个新的执行编号（execution_id），记开始时间，
+           清掉上一轮的错误和结束时间，进度表重置，发一条 status 事件，提交；
         3. 建 AnalysisRunner，跑八个阶段；
         4. 按结局写状态：
              正常跑完           succeeded
@@ -1092,7 +1094,8 @@ def run_analysis(ctx: AppContext, analysis_id: str) -> None:
                                 正在跑的阶段标 “这一阶段出错了”，并打一条带堆栈的错误日志
            后两种情况先 rollback：丢掉出事那一刻会话里还没提交的改动。之前各阶段已经提交的进度和结果都还在，
            所以取消以后仍然可以看第 2 阶段存下的初步路线树；
-        5. 记结束时间，发一条 done 事件，提交。
+        5. 记结束时间，发一条 done 事件，提交；
+        6. 成功的话，按配置排一个审计任务（audit.schedule，AUDIT_MODE=off 时什么都不做）。
     读写：
         analyses 表（这一行的大部分列）、analysis_events 表；各阶段还会读库存、在售目录、先例库，
         写 substance_hazards、llm_calls。
@@ -1109,6 +1112,8 @@ def run_analysis(ctx: AppContext, analysis_id: str) -> None:
             return
         analysis.status = "running"
         analysis.attempts += 1
+        # 这一轮运行的编号：重跑时 id 不变、attempts 会被清零，只有它能区分各轮的结果（审计用它当 execution_id）
+        analysis.execution_id = uuid.uuid4().hex
         analysis.started_at = models.utcnow()
         analysis.finished_at = None
         analysis.error = None
@@ -1139,6 +1144,9 @@ def run_analysis(ctx: AppContext, analysis_id: str) -> None:
         analysis.finished_at = models.utcnow()
         add_event(session, analysis.id, "done", {"status": analysis.status, "error": analysis.error})
         session.commit()
+        # 审计（SAL）：成功跑完以后按配置排一个审计任务。它在八个阶段之外跑，出错也不影响这次分析
+        if analysis.status == "succeeded":
+            audit.schedule(ctx, session, analysis)
 
 
 def rescore(ctx: AppContext, analysis: models.Analysis, *, relaxed=(), weights=None) -> dict[str, Any]:

@@ -41,6 +41,9 @@ A9 页面上的“已导入库存 N 种”是 api/inventory.py 的 /api/inventor
         POST   /api/analyses/{id}/mark-owned                  B12 标记为我有
     其他
         GET    /api/analyses/{id}/llm-usage            这次分析的大模型用量
+    审计（SAL，AUDIT_MODE 不是 off 时才有内容；见 syntherisk/audit/）
+        GET    /api/analyses/{id}/audit                                    路线卡的审计标签、进度面板的审计一行
+        GET    /api/analyses/{id}/routes/{route_id}/steps/{n}/audit        证据卡的“审计”页签
 
 对应模块：M0（应用服务）把任务交给 MQ（任务队列），后台按 pipeline.py 的八个阶段依次调 M3–M11。
 结果页上的操作大多只读已经存好的结果，或者让 M10 重新过滤、排序，都是秒级的。
@@ -98,7 +101,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from syntherisk import i18n, models
+from syntherisk import audit, i18n, models
 from syntherisk.api import schemas
 from syntherisk.api.deps import (
     Principal, authenticate, get_ctx, get_db, get_principal, load_analysis, load_finished_analysis,
@@ -868,6 +871,8 @@ def add_exclusion(analysis_id: str, body: schemas.ExclusionCreate, principal: Pr
         db.refresh(analysis)
         return {"research": True, "exclusion": exclusion, "analysis": analysis_view(analysis, ctx)}
     db.commit()
+    # 名次变了：按配置重新审计一次，接在这一轮上一次审计的后面（AUDIT_MODE=off 时什么都不做）
+    audit.schedule(ctx, db, analysis, trigger="rescore")
     return {"research": False, "exclusion": exclusion, "result": result_view(result)}
 
 
@@ -895,6 +900,7 @@ def remove_exclusion(analysis_id: str, exclusion_id: str, principal: Principal =
     drop_stale_explanations(result, before)
     flag_modified(analysis, "result")
     db.commit()
+    audit.schedule(ctx, db, analysis, trigger="rescore")
     return {"result": result_view(result)}
 
 
@@ -946,6 +952,8 @@ def mark_owned(analysis_id: str, body: schemas.MarkOwnedRequest, principal: Prin
         flag_modified(analysis, "result")
     # 一次提交，把库存的改动和 result 的改动一起写进数据库
     db.commit()
+    if molecule is not None:
+        audit.schedule(ctx, db, analysis, trigger="rescore")
     return {"item": InventoryService.to_dict(item), "created": created, "result": result_view(result)}
 
 
@@ -981,3 +989,56 @@ def llm_usage(analysis_id: str, principal: Principal = Depends(get_principal), d
             for module, model, calls, tokens_in, tokens_out in rows
         ],
     }
+
+
+# ---------------------------------------------------------------- 审计（SAL）
+
+
+@router.get("/analyses/{analysis_id}/audit")
+def get_audit(analysis_id: str, principal: Principal = Depends(get_principal), db: Session = Depends(get_db),
+              ctx: AppContext = Depends(get_ctx)):
+    """这次分析的审计记录（SAL）。路线卡的审计标签、进度面板的“审计”一行用它。
+
+    需要登录。只读。审计在分析跑完以后才在后台进行，前端可以在 `status` 是 `waiting` / `queued` / `running`
+    时每隔几秒查一次。返回：
+
+    - `status`：
+      `disabled` 没开审计（AUDIT_MODE=off）/ `not_eligible` 不在审计范围或数据类别不被接受（原因在 `reason`）/
+      `waiting` 分析还在跑 / `none` 这次分析没有审计记录 / `queued`、`running` 审计中 /
+      `done` 完成 / `failed` 出错（原因在 `reason`）/ `superseded`、`outdated` 审计的是上一轮的结果
+    - `reason`：没做成的原因代码，比如 `OUT_OF_SCOPE`、`RETENTION_POLICY_REQUIRED`、`STRUCTURE_CONFLICT`、
+      `JSON_LIMIT_EXCEEDED`、`PROVIDER_UNAVAILABLE`、`TIMEOUT`；没有则为 `null`
+    - `mode`：`off` / `embedded` / `http`；`provider`：哪个审计实现、哪一版
+    - `approval_allowed`：永远是 `false`；`review_required`：永远是 `true`（审计记录不等于路线被批准）
+    - `mapping_status`：`current` 来源没变 / `stale` 有来源被更正或撤稿，需要复核
+    - `flags`：整次分析的标记代码；`routes`：每条路线 `{route_id, route_snapshot_id, flags, steps}`，
+      `steps` 的字段见 `…/steps/{n}/audit`
+    - `audit_id`、`document_id`（SAL 的文档编号）、`trigger`（`analysis` / `rescore`）、`created_at`、`finished_at`
+
+    界面上的文字由前端按代码翻译，接口只给代码。出错：404 没有这个分析。
+    """
+    return audit.audit_view(ctx, db, load_analysis(db, principal, analysis_id))
+
+
+@router.get("/analyses/{analysis_id}/routes/{route_id}/steps/{step_index}/audit")
+def get_step_audit(analysis_id: str, route_id: str, step_index: int, principal: Principal = Depends(get_principal),
+                   db: Session = Depends(get_db), ctx: AppContext = Depends(get_ctx)):
+    """证据卡（R6）的“审计”页签：某条路线某一步的审计记录。
+
+    需要登录。只读。返回 `GET …/audit` 里除 `routes` 以外的字段，再加上：
+
+    - `route_id`、`step_index`、`route_snapshot_id`（SAL 给这条路线的编号）、`route_flags`
+    - `step`：这一步 `{step_index, step_key, step_instance_id, flags, review_required, sources}`；
+      审计没做完或者这一步不在审计结果里时是 `null`。
+      `sources` 每项 `{ref, kind, doi, source_id, check, passage_verified, verdict, lifecycle}`：
+      `ref` 是证据卡里的先例编号（P1、P2……），`check` 是核查到哪一步
+      （`unverified` 未核查 / `metadata_checked` 书目已核对 / `passage_checked` 已定位原文），
+      `lifecycle` 是来源的状态（`unknown` / `current` / `corrected` / `retracted`）
+
+    出错：404 没有这个分析、没有这条路线，或者这条路线没有这一步；409 这次分析还没有评分结果。
+    """
+    analysis = load_scored_analysis(db, principal, analysis_id)
+    route = _route_or_404(analysis.result, route_id)
+    if not 1 <= step_index <= len(route["steps"]):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, i18n.tr("这条路线没有这一步", "This route has no such step"))
+    return audit.step_audit_view(ctx, db, analysis, route_id, step_index)

@@ -27,7 +27,8 @@
 数据从哪来到哪去
     本文件自己不读写业务数据。应用启动时 build_context() 会读配置、连数据库、建表、读 data/ 下的参考数据；
     建好的上下文放在 app.state.ctx 上，每个接口通过 api/deps.py 的 get_ctx() 取到它。
-    进程内队列模式下，启动时还会改写 analyses 表里没跑完的分析（见 pipeline.recover_interrupted）。
+    进程内队列模式下，启动时还会改写 analyses 表里没跑完的分析（见 pipeline.recover_interrupted），
+    以及 audit_runs 表里没跑完的审计（见 audit/service.py 的 recover_interrupted）。
 
 本文件里有什么
     logger          名字是 "syntherisk" 的日志器
@@ -51,6 +52,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from syntherisk import __version__, i18n
 from syntherisk.api import agreement, analyses, core, inventory, reports, structures
+from syntherisk.audit.service import recover_interrupted as recover_audits
 from syntherisk.config import Settings
 from syntherisk.context import AppContext, build_context
 from syntherisk.pipeline import recover_interrupted
@@ -107,6 +109,9 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
             # sync 模式（测试用）任务在入队时当场跑完
             for analysis_id in recover_interrupted(context):
                 context.queue.enqueue("analysis.run", {"analysis_id": analysis_id})
+            # 审计任务也一样：排着队的重新入队，跑到一半的标成失败（见 audit/service.py）
+            for audit_id in recover_audits(context):
+                context.queue.enqueue("audit.run", {"audit_id": audit_id})
         logger.info("Syntherisk 后端已启动，逆合成引擎：%s", context.retro_engine.name)
         # 到这里启动完成，开始接收请求；服务停止时从 yield 后面接着执行
         yield

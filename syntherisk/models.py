@@ -51,6 +51,7 @@
     Organization、User、Membership、AgreementText、AgreementAcceptance、Project、Draft、Preset   M0
     Analysis、AnalysisEvent、LLMCall                                  分析任务
     InventoryItem、InventoryImport、InventoryImportRow                M4 库存
+    AuditRun                                                          审计（SAL，见 audit/）
     Report、ExperimentRecord、ExperimentAttachment、CalibrationRun    M13 报告、M14 回填
     ReactionPrecedent、LibraryVersion、CatalogCompound、SubstanceHazard  公开参考数据
 """
@@ -404,6 +405,9 @@ class Analysis(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 这次用的逆合成引擎的名字："demo" 或 "aizynthfinder"。流水线第 2 阶段写
     engine: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # 这一轮运行的编号（32 位十六进制）。run_analysis 每次开跑时换一个新的：重跑以后 id 和 attempts 都可能一样，
+    # 只有它能区分“哪一轮跑出来的结果”。审计（audit/）把它当作 SAL 的 execution_id。旧数据是 NULL
+    execution_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # 【加密】目标分子：{smiles（规范写法）, key14, name, formula, mol_weight, messages（校验时的提示）}。
     # 提交分析时由 api/analyses.py 的 create_analysis() 写，之后不变
@@ -600,6 +604,46 @@ class InventoryImportRow(Base):
 
 
 # ---------------------------------------------------------------- M13 报告、M14 回填
+
+
+class AuditRun(Base):
+    """一次审计：把一次分析的结果送去 SAL（团队的 Audit 模型）留档、核对来源。见 syntherisk/audit/。
+
+    分析成功跑完、或者 B11 排除 / B12 标记已有之后重新排了名，audit/service.schedule() 建一行，
+    后台任务 "audit.run" 把它跑完。只有 AUDIT_MODE 不是 off、分析又在审计范围里时才会有。
+    status 的取值和含义见 audit/service.py 的文件头。
+    加密：summary 加密（从分析结果整理出来的路线、步骤和文献）；其余是编号和状态，明文。
+    谁写：audit/service.py。谁读：audit/service.py 的 audit_view()（GET …/audit 两个接口）。
+    只增不删。
+    """
+
+    __tablename__ = "audit_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    # 审计的是哪一次分析、属于哪个课题组
+    analysis_id: Mapped[str] = mapped_column(ForeignKey("analyses.id"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    # 那次分析的哪一轮运行（analyses.execution_id），和这一次导出的编号。SAL 用这两个编号区分不同的观察
+    execution_id: Mapped[str] = mapped_column(String(64))
+    observation_id: Mapped[str] = mapped_column(String(64))
+    # 同一轮运行里上一次做完的审计在 SAL 那里的文档编号（重新排名以后再审计时才有），SAL 用它把两次串起来
+    parent_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # 为什么审计：analysis（分析跑完）/ rescore（排除或标记已有之后重新排名）
+    trigger: Mapped[str] = mapped_column(String(20), default="analysis")
+    # 当时的 AUDIT_MODE（embedded / http），和具体是哪个实现、哪一版（比如 "sal-embedded mapping/v0.1"）
+    mode: Mapped[str] = mapped_column(String(20))
+    provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # queued / running / done / not_eligible / failed / superseded
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    # 没做成的原因：一个短代码（比如 RETENTION_POLICY_REQUIRED、STRUCTURE_CONFLICT、TIMEOUT），不带分析内容
+    reason: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # SAL 给的文档编号（md_ 开头）
+    document_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # 【加密】统一格式的审计结果（audit/providers.py 的 summarize()）：每条路线、每一步的编号、标记和来源
+    summary: Mapped[dict[str, Any] | None] = mapped_column(EncryptedJSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Report(Base):

@@ -121,6 +121,7 @@
 | 各模块现在接的是什么 | `GET /meta/modules` |
 | 数据来源和许可登记表 | `GET /meta/data-sources` |
 | 这次分析的大模型用量 | `GET /analyses/{id}/llm-usage` |
+| 审计记录（SAL；路线卡标签、进度面板、证据卡“审计”页签） | `GET /analyses/{id}/audit`、`GET /analyses/{id}/routes/{route_id}/steps/{n}/audit` |
 | 健康检查（不用登录） | `GET /health` |
 
 ## 中文和英文
