@@ -6,6 +6,8 @@
 #      那样脚本里会读标准输入的命令可能把脚本后面的内容吃掉）：
 #        curl -fsSLo /root/setup.sh https://raw.githubusercontent.com/RP-12000/Syntherisk-Technology/master/deploy/vultr/setup.sh && bash /root/setup.sh
 #   2. 在 Vultr 建一个 Startup Script（Boot 类型），内容是 #!/bin/bash 加上面那一行，部署新机器时选上它。
+# 有域名、要开 HTTPS 时，第一次在 bash 前面加上域名：… && DOMAIN=app.syntherisk.com bash /root/setup.sh
+# （域名要先解析到这台机器）。脚本把域名记在 /etc/syntherisk/domain，以后不带 DOMAIN 重新运行也照样是 HTTPS。
 #
 # 装好以后：
 #   后端      /opt/syntherisk/backend（GitHub 上这个仓库的 master），虚拟环境 /opt/syntherisk/venv
@@ -13,7 +15,10 @@
 #   前端      /var/www/syntherisk（本仓库 deploy/web 里的构建结果）
 #   设置      /etc/syntherisk/syntherisk.env（第一次运行时生成，SECRET_KEY 和 DATA_ENCRYPTION_KEY 随机生成、不打印）
 #   服务      syntherisk.service（uvicorn，只监听 127.0.0.1:8000；分析队列在这个进程里，所以只开一个进程）
-#   网页      nginx 监听 80 端口：前端页面；/api、/health 转给后端（不缓冲，进度推送要实时）
+#   网页      nginx：前端页面；/api、/health 转给后端（不缓冲，进度推送要实时）。两个 server 共用的部分在
+#             /etc/nginx/snippets/syntherisk-app.conf。没有域名时只开 80 端口；有域名、证书也申请下来以后，
+#             443 端口提供 HTTPS，80 端口（包括直接用 IP 访问）一律跳到 https://域名
+#   证书      有域名时向 Let's Encrypt 申请（不登记邮箱），certbot 自带的定时器自动续期，续期后 reload nginx
 #   日志      本脚本：/var/log/syntherisk-setup.log；后端：journalctl -u syntherisk
 #
 # 数据都从公开来源下载，在服务器上导入（第一次运行要一到两个小时，大部分时间在导入 175 万条专利反应）：
@@ -38,6 +43,16 @@ VENV=$HOME_DIR/venv
 VAR_DIR=/var/lib/syntherisk
 WEB_DIR=/var/www/syntherisk
 ENV_FILE=/etc/syntherisk/syntherisk.env
+# 域名（可选）：这次运行带了 DOMAIN 就用它（并记进 DOMAIN_FILE），没带就用上次记下的
+DOMAIN_FILE=/etc/syntherisk/domain
+DOMAIN=${DOMAIN:-$(cat $DOMAIN_FILE 2>/dev/null || true)}
+if [ -n "$DOMAIN" ] && ! [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
+  echo "DOMAIN 不是一个域名：$DOMAIN"
+  exit 1
+fi
+CERT=/etc/letsencrypt/live/$DOMAIN/fullchain.pem
+# Let's Encrypt 验证域名时来取的文件放这里（80 端口的 /.well-known/acme-challenge/）
+ACME_DIR=/var/www/letsencrypt
 REPO=https://github.com/RP-12000/Syntherisk-Technology.git
 USPTO_URL=https://ndownloader.figshare.com/files/8664379
 USPTO_MD5=b0d94806fe7479fad6db9b894cff858e
@@ -50,6 +65,9 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get -o DPkg::Lock::Timeout=900 update -y
 apt-get -o DPkg::Lock::Timeout=900 install -y git curl nginx ufw build-essential p7zip-full ca-certificates \
   libx11-6 libxext6 libxrender1 zlib1g fonts-wqy-microhei
+if [ -n "$DOMAIN" ]; then
+  apt-get -o DPkg::Lock::Timeout=900 install -y certbot
+fi
 
 step "Python 3.12（aizynthfinder 4.4.1 要求低于 3.13）"
 if command -v python3.12 >/dev/null 2>&1; then
@@ -78,6 +96,9 @@ as_user() { runuser -u $APP_USER -- env HOME=$HOME_DIR "$@" </dev/null; }
 step "用户和目录"
 id -u $APP_USER >/dev/null 2>&1 || useradd --system --home-dir $HOME_DIR --shell /usr/sbin/nologin $APP_USER
 mkdir -p $HOME_DIR $VAR_DIR/files $VAR_DIR/aizynth $VAR_DIR/download $WEB_DIR "$(dirname $ENV_FILE)"
+if [ -n "$DOMAIN" ]; then
+  echo "$DOMAIN" > $DOMAIN_FILE
+fi
 chown -R $APP_USER:$APP_USER $HOME_DIR $VAR_DIR
 
 step "后端代码（$REPO 的 master）"
@@ -188,47 +209,113 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/nginx/sites-available/syntherisk <<'EOF'
+# 页面和接口转发：http 和 https 两个 server 共用这一份
+mkdir -p /etc/nginx/snippets $ACME_DIR
+cat > /etc/nginx/snippets/syntherisk-app.conf <<'EOF'
+# 由 deploy/vultr/setup.sh 生成，重新运行脚本会覆盖
+root /var/www/syntherisk;
+index index.html;
+client_max_body_size 25m;
+
+location /api/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 600s;
+    # 分析进度是服务器推送事件（SSE）：来一条转一条，不攒着
+    proxy_buffering off;
+    proxy_cache off;
+}
+location = /health {
+    proxy_pass http://127.0.0.1:8000;
+}
+location / {
+    try_files $uri $uri/ /index.html;
+}
+EOF
+
+# 写网站配置并让 nginx 生效。参数 http：80 端口照常提供网站；https：80 端口一律跳到 https://域名，443 端口提供网站。
+# 两种都在 80 端口留着 /.well-known/acme-challenge/，申请和续期证书要用
+write_nginx() {
+  if [ "$1" = https ]; then
+    cat > /etc/nginx/sites-available/syntherisk <<EOF
+# 由 deploy/vultr/setup.sh 生成，重新运行脚本会覆盖。域名记在 $DOMAIN_FILE
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
-    root /var/www/syntherisk;
-    index index.html;
-    client_max_body_size 25m;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 600s;
-        # 分析进度是服务器推送事件（SSE）：来一条转一条，不攒着
-        proxy_buffering off;
-        proxy_cache off;
-    }
-    location = /health {
-        proxy_pass http://127.0.0.1:8000;
+    location ^~ /.well-known/acme-challenge/ {
+        root $ACME_DIR;
     }
     location / {
-        try_files $uri $uri/ /index.html;
+        return 301 https://$DOMAIN\$request_uri;
     }
 }
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name $DOMAIN;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    include snippets/syntherisk-app.conf;
+}
 EOF
-ln -sf /etc/nginx/sites-available/syntherisk /etc/nginx/sites-enabled/syntherisk
-rm -f /etc/nginx/sites-enabled/default
-nginx -t
+  else
+    cat > /etc/nginx/sites-available/syntherisk <<EOF
+# 由 deploy/vultr/setup.sh 生成，重新运行脚本会覆盖
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    location ^~ /.well-known/acme-challenge/ {
+        root $ACME_DIR;
+    }
+    include snippets/syntherisk-app.conf;
+}
+EOF
+  fi
+  ln -sf /etc/nginx/sites-available/syntherisk /etc/nginx/sites-enabled/syntherisk
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t
+  systemctl reload nginx || systemctl restart nginx
+}
+
 systemctl daemon-reload
 systemctl enable nginx syntherisk >/dev/null
-systemctl reload nginx || systemctl restart nginx
+# 证书已经有了（比如重新运行脚本更新版本时）就直接写 https 配置，没有就先用 http，证书在防火墙那一步之后申请
+if [ -n "$DOMAIN" ] && [ -f "$CERT" ]; then
+  write_nginx https
+else
+  write_nginx http
+fi
 
 step "防火墙：只开 SSH、80、443"
 ufw allow OpenSSH >/dev/null
 ufw allow 'Nginx Full' >/dev/null
 ufw --force enable >/dev/null
 ufw status
+
+if [ -n "$DOMAIN" ]; then
+  step "HTTPS：$DOMAIN 的 Let's Encrypt 证书"
+  # 续期以后 reload nginx，新证书才生效（续期本身由 certbot 装的 certbot.timer 每天跑两次）
+  mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+  printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+  chmod 755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+  if [ ! -f "$CERT" ]; then
+    # 不登记邮箱：续期是自动的，不需要到期提醒。申请不下来时网站先继续用 http，脚本接着往下跑
+    certbot certonly --webroot -w $ACME_DIR -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email \
+      || echo "!!! $DOMAIN 的证书没申请下来，网站先继续用 http。看上面 certbot 的报错：域名是否解析到这台机器，80 端口能否从外面访问"
+  fi
+  if [ -f "$CERT" ]; then
+    write_nginx https
+  fi
+fi
 
 step "先例库（只在还没导过时导入；导完以前后端不启动，免得只导了一部分就拿来定证据等级）"
 if [ ! -f $VAR_DIR/.precedents-loaded ]; then
@@ -269,4 +356,8 @@ if [ ! -f $VAR_DIR/.literature-filled ]; then
 fi
 
 step "完成"
-echo "打开 http://$(curl -s -4 --max-time 10 https://api.ipify.org || hostname -I | awk '{print $1}') 就是网站。后端日志：journalctl -u syntherisk -f"
+if [ -n "$DOMAIN" ] && [ -f "$CERT" ]; then
+  echo "打开 https://$DOMAIN 就是网站。后端日志：journalctl -u syntherisk -f"
+else
+  echo "打开 http://$(curl -s -4 --max-time 10 https://api.ipify.org || hostname -I | awk '{print $1}') 就是网站。后端日志：journalctl -u syntherisk -f"
+fi

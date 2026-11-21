@@ -50,14 +50,18 @@ tail -f /var/log/syntherisk-setup.log
 `LLM_PROVIDER=anthropic`，再加一行 `LLM_API_KEY=你的 key`（要指定型号的话加 `LLM_MODEL=…`），保存后 `systemctl restart syntherisk`。
 这个文件里还有脚本随机生成的 `SECRET_KEY` 和 `DATA_ENCRYPTION_KEY`：不要改，也不要删。改了 `DATA_ENCRYPTION_KEY`，库里加密的数据就再也读不出来了。
 
-**HTTPS：** 要先有一个域名指向这台服务器，然后：
+**HTTPS：** 先让域名的 A 记录指向这台服务器（如果还有 AAAA 记录，也要指向这台服务器，否则 Let's Encrypt 验证不过），
+Vultr 的 Firewall Group 放开 443。然后把第 2 步那一行在 `bash` 前面加上域名，运行一次：
 
 ```bash
-apt-get install -y certbot python3-certbot-nginx
-certbot --nginx -d 你的域名
+curl -fsSLo /root/setup.sh https://raw.githubusercontent.com/RP-12000/Syntherisk-Technology/master/deploy/vultr/setup.sh && DOMAIN=app.syntherisk.com bash /root/setup.sh
 ```
 
-再把 `/etc/syntherisk/syntherisk.env` 里的 `CORS_ORIGINS` 改成 `https://你的域名`，重启后端。
+脚本会把域名记在 `/etc/syntherisk/domain`，向 Let's Encrypt 申请证书（不登记邮箱），之后 http 和直接用 IP 访问的都跳到
+`https://域名`。证书由 certbot 自带的定时器自动续期，续期后自动 reload nginx；`certbot renew --dry-run` 可以试一遍续期。
+以后更新照常运行第 2 步那一行，不用再带 `DOMAIN`。证书申请不下来时，脚本打印原因，网站继续用 http。
+不要再手动运行 `certbot --nginx`：脚本每次运行都会重写 nginx 配置，手动改的会被覆盖。
+`CORS_ORIGINS` 不用改：前端和接口在同一个地址下，用不到跨域。
 
 ## 4. 东西都放在哪
 
@@ -68,7 +72,10 @@ certbot --nginx -d 你的域名
 | `/var/lib/syntherisk` | 数据：`syntherisk.db`（账号、分析、先例库都在里面）、`files/`（报告和附件）、`aizynth/`（模型和在售清单） |
 | `/var/www/syntherisk` | 前端页面 |
 | `/etc/syntherisk/syntherisk.env` | 设置和密钥 |
-| `/etc/nginx/sites-available/syntherisk` | nginx：前端页面，`/api` 转给后端 |
+| `/etc/nginx/sites-available/syntherisk` | nginx：80 和 443 端口（脚本生成，每次运行覆盖） |
+| `/etc/nginx/snippets/syntherisk-app.conf` | nginx：前端页面，`/api` 转给后端（http 和 https 共用） |
+| `/etc/syntherisk/domain` | 域名（开了 HTTPS 才有） |
+| `/etc/letsencrypt` | 证书和续期设置（开了 HTTPS 才有） |
 
 要备份的只有 `/var/lib/syntherisk` 和 `/etc/syntherisk/syntherisk.env`。
 
